@@ -19,7 +19,7 @@
 - [[#minutes--journal][Minutes & Journal]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
-  - [[#exlpore-the-dataset][Exlpore the dataset]]
+  - [[#explore-the-dataset][Explore the dataset]]
 - [[#implementation][Implementation]]
   - [[#the-frontend][The frontend]]
   - [[#the-api][The API]]
@@ -268,16 +268,21 @@ CLOCK: [2023-04-01 Sat 20:10]--[2023-04-01 Sat 20:40] =>  0:30
 CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :END:
 
-** Exlpore the dataset
+** Explore the dataset
+:PROPERTIES:
+:header-args: :noweb yes
+:END:
 :LOGBOOK:
+CLOCK: [2023-04-01 Sat 22:51]--[2023-04-01 Sat 23:46] =>  0:55
+CLOCK: [2023-04-01 Sat 22:29]--[2023-04-01 Sat 22:38] =>  0:09
 CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
 :END:
 
 The journey dataset consists of three files, one file for the data of one month.
 
 CSV header defines the following fields:
-+ Departure :: ISO8601 timestamp *without time zone info*
-+ Return :: ISO8601 stamp *without time zone info*
++ Departure
++ Return
 + Departure station id
 + Departure station name
 + Return station id
@@ -285,16 +290,26 @@ CSV header defines the following fields:
 + Covered distance (m)
 + Duration (sec)
 
-#+header: :cache yes
+AKA this thing:
+
+#+name: JourneyRecordTuple
+#+begin_src python
+from collections import namedtuple
+
+JourneyRecord = namedtuple(
+    'JourneyRecord',
+    'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration'
+)
+#+end_src
 
 #+header: :cache yes
-#+begin_src python :dir ../dataset/
+#+header: :dir ../dataset/
+#+begin_src python
 import csv
-from collections import namedtuple
 
 f = '2021-05.csv'
 
-JourneyRecord = namedtuple('JourneyRecord', 'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration')
+<<JourneyRecordTuple>>
 
 reader = csv.reader(open(f, 'r'))
 # skip the header
@@ -302,18 +317,134 @@ next(reader)
 print(list(map(JourneyRecord._make, reader))[1:2])
 #+end_src
 
-#+RESULTS[bf45f4d86825de81d20e6cb5783f03284aa2ada8]:
+#+RESULTS[2684a09d41a676953da92f9c5450e4deecae00a0]:
 : [JourneyRecord(departure_time='2021-05-31T23:56:59', return_time='2021-06-01T00:07:14', departure_id='082', departure_name='Töölöntulli', return_id='113', return_name='Pasilan asema', distance='1870', duration='611')]
 
-It seem
+Departure seems to be a timestamp without a timezone, same for Return.  I'll just assume this is in UTC and move on.
 
+Departure station id and return station id seem to strings, because they may start with a 0.  +Distance and duration are ints+.  Only duration is always an int, distance may be the empty string, or a float.  Let's set the distance to 0 if it is represented as an empty string.  Departure and return stations names seem to be simple strings.
 
+Here's a parser to check if I'm right.
+
+#+name: JourneyParser
 #+begin_src python
+<<JourneyRecordTuple>>
+
 from datetime import datetime
 
+
 class Journey:
-    def __init__(self, departure_time):
+    def __init__(
+            self,
+            departure_time,
+            return_time,
+            departure_station_id,
+            departure_station_name,
+            return_station_id,
+            return_station_name,
+            distance,
+            duration
+    ):
         self.departure_time = departure_time
+        self.return_time = return_time
+        self.departure_station_id = departure_station_id
+        self.departure_station_name = departure_station_name
+        self.return_station_id = return_station_id
+        self.return_station_name = return_station_name
+        self.distance = distance
+        self.duration = duration
+
+
+    def from_journey_record(record):
+        return Journey(
+            record.departure_time,
+            record.return_time,
+            record.departure_id,
+            record.departure_name,
+            record.return_id,
+            record.return_name,
+            record.distance,
+            record.duration
+        )
+
+    @property
+    def duration(self):
+        return self._duration
+
+    @duration.setter
+    def duration(self, duration):
+        if isinstance(duration, str):
+            duration = int(duration)
+        if not isinstance(duration, int):
+            raise ValueError('???')
+        self._duration = duration
+
+    @property
+    def distance(self):
+        return self._distance
+
+    @distance.setter
+    def distance(self, distance):
+        if isinstance(distance, str):
+            if distance == '':
+                distance = 0.0
+            else:
+                distance = float(distance)
+        if not isinstance(distance, float):
+            raise ValueError('???')
+        self._distance = distance
+
+    @property
+    def return_station_name(self):
+        return self._return_station_name
+
+    @return_station_name.setter
+    def return_station_name(self, return_station_name):
+        if not isinstance(return_station_name, str):
+            raise ValueError('???')
+        self._return_station_name = return_station_name
+
+    @property
+    def return_station_id(self):
+        return self._return_station_id
+
+    @return_station_id.setter
+    def return_station_id(self, return_station_id):
+        if not isinstance(return_station_id, str):
+            raise ValueError('???')
+        self._return_station_id = return_station_id
+
+    @property
+    def departure_station_name(self):
+        return self._departure_station_name
+
+    @departure_station_name.setter
+    def departure_station_name(self, departure_station_name):
+        if not isinstance(departure_station_name, str):
+            raise ValueError('???')
+        self._departure_station_name = departure_station_name
+
+    @property
+    def departure_station_id(self):
+        return self._departure_station_id
+
+    @departure_station_id.setter
+    def departure_station_id(self, departure_station_id):
+        if not isinstance(departure_station_id, str):
+            raise ValueError('???')
+        self._departure_station_id = departure_station_id
+
+    @property
+    def return_time(self):
+        return self._return_time
+
+    @return_time.setter
+    def return_time(self, return_time):
+        if isinstance(return_time, str):
+            return_time = datetime.fromisoformat(return_time)
+        if not isinstance(return_time, datetime):
+            raise ValueError('???')
+        self._return_time = return_time
 
     @property
     def departure_time(self):
@@ -325,17 +456,56 @@ class Journey:
             departure_time = datetime.fromisoformat(departure_time)
         if not isinstance(departure_time, datetime):
             raise ValueError('???')
-
         self._departure_time = departure_time
 
     def __repr__(self):
-        return f'Journey({str(self.departure_time)!r})'
-
-print(Journey('2021-05-31T23:56:59'))
+        return (
+            'Journey('
+            f'{str(self.departure_time)!r}, '
+            f'{str(self.return_time)!r}, '
+            f'{self.departure_station_id!r}, '
+            f'{self.departure_station_name!r}, '
+            f'{self.return_station_id!r}, '
+            f'{self.return_station_name!r}, '
+            f'{self.distance!r}, '
+            f'{self.duration!r}'
+            ')'
+        )
 #+end_src
 
+
+We can check with the parser if all the data is now parseable.
+
+#+header: :cache yes
+#+header: :dir ../dataset/
+#+begin_src python
+import csv
+import traceback
+
+files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
+
+<<JourneyRecordTuple>>
+<<JourneyParser>>
+
+def try_parse(journey_record):
+    try:
+        return Journey.from_journey_record(journey_record)
+    except Exception as e:
+        print(traceback.format_exc(), end='')
+        raise e
+
+for f in files:
+    reader = csv.reader(open(f, 'r', newline=''))
+    # skip the header
+    next(reader)
+    list(map(try_parse, map(JourneyRecord._make, reader)))
+#+end_src
+
+#+RESULTS[6b314abaa957fbe31922465789c4ad91639619ee]:
+
+And this resulted in no output, so we have a good enough parser for the data.
+
 #+RESULTS:
-: Journey('2021-05-31 23:56:59')
 
 * Implementation
 
