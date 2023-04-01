@@ -1,0 +1,364 @@
+#+todo: TODO | DONE
+
+* Table of contents                                                     :TOC:
+- [[#the-assignment][The assignment]]
+  - [[#the-exercise][The exercise]]
+  - [[#stuff-to-do][Stuff to do]]
+  - [[#functional-requirements][Functional requirements]]
+- [[#requirements][Requirements]]
+  - [[#must][Must]]
+  - [[#should][Should]]
+  - [[#could][Could]]
+  - [[#wish][Wish]]
+- [[#resources][Resources]]
+  - [[#assignment-requirements-specification][Assignment, requirements specification]]
+  - [[#academy-homepage][Academy homepage]]
+  - [[#tips][Tips]]
+  - [[#datasets][Datasets]]
+  - [[#contacts][Contacts]]
+- [[#minutes--journal][Minutes & Journal]]
+  - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
+  - [[#collect-requirements][Collect requirements]]
+  - [[#exlpore-the-dataset][Exlpore the dataset]]
+- [[#implementation][Implementation]]
+  - [[#the-frontend][The frontend]]
+  - [[#the-api][The API]]
+  - [[#the-database][The database]]
+  - [[#the-datapump][The datapump]]
+  - [[#the-map-frontend][The map frontend]]
+
+* The assignment
+
+Text here lifted from the [[id:40872028-9B66-4C60-BCEA-0F8D427CBF74][repository]].
+
+** The exercise
+
+Create a *web application* that uses a *backend service* to fetch the data. *Backend* can be made with any technology. We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
+
+Backend can use a database, or it can be memory-based. *Real database use is a preferable* choice because it allows you to show broader skills. Also, the datasets are quite big so in-memory operations may be quite slow.
+
+You can also freely choose the frontend (and possibly mobile frontend) technologies to use. The important part is to give good instructions on how to build and run the project.
+
+** Stuff to do
+
+Important! Implementing all of the proposed features is not needed for a good exercise result. You may also concentrate on:
+
++ Good documentation (readme/other docs)
++ Proper git usage (small commits, informative commit messages)
++ Tests
++ Getting features complete
++ Writing good code
++ Which are all highly valued in a good repository.
+
+** Functional requirements
+
+Focus on the recommended features. For extra points, you might want to also complete some additional features. You can also come up with extra features, if you do, please document them in the readme!
+
+*** Data import
+
+**** Recommended
+
+*****  Import data from the CSV files to a database or in-memory storage
+
+***** Validate data before importing
+
+***** Don't import journeys that lasted for less than ten seconds
+
+***** Don't import journeys that covered distances shorter than 10 meters
+
+*** Journey list view
+:PROPERTIES:
+:ID:       3021535E-D457-4E21-B296-4035BCE2E439
+:END:
+
+**** Recommended
+
+***** List journeys
+:PROPERTIES:
+:ID:       B4893559-616F-40BF-921F-7D317A7A3233
+:END:
+
+If you don't implement pagination, use some hard-coded limit for the list length because showing several million rows would make any browser choke
+
+***** For each journey show departure and return stations, covered distance in kilometers and duration in minutes
+:PROPERTIES:
+:ID:       9C02BABD-4912-400F-91BE-7ACE4403DE58
+:END:
+
+**** Additional
+
+***** Pagination
+
+***** Ordering per column
+
+***** Searching
+
+***** Filtering
+
+*** Station list
+:PROPERTIES:
+:ID:       89C5ADDA-6E9D-485B-877F-2A47D765789A
+:END:
+
+**** Recommended
+
+***** List all the stations
+
+**** Additional
+
+***** Pagination
+
+***** Searching
+
+*** Single station view
+:PROPERTIES:
+:ID:       8B7AC0C5-E098-401C-936F-9B8AA51B8AB4
+:END:
+
+**** Recommended
+
+***** Station name
+
+***** Station address
+
+***** Total number of journeys starting from the station
+
+***** Total number of journeys ending at the station
+
+**** Additional
+
+***** Station location on the map
+
+***** The average distance of a journey starting from the station
+
+***** The average distance of a journey ending at the station
+
+***** Top 5 most popular return stations for journeys starting from the station
+
+***** Top 5 most popular departure stations for journeys ending at the station
+
+***** Ability to filter all the calculations per month
+
+*** Surprise us with
+
+**** Endpoints to store new journeys data or new bicycle stations
+
+**** Running backend in Docker
+
+**** Running backend in Cloud
+
+**** Implement E2E tests
+
+**** Create UI for adding journeys or bicycle stations
+
+* Requirements
+
+This section defines the requirements by importance as defined by me.  The requirements defined in the [[id:6893CF22-FA13-475C-89DE-36E7E2B33128][must]] section must be implemented for me to return the assignment.  I will be happy if everything in the [[id: 1DB8A845-6E20-4E41-86CF-12F6496ED110][should]] section is implemented.  Implementing any item in the [[id:7FDED9CD-5D9A-4F4E-8726-86548002F5E5][could]] section is very low priority, and will likely only be done if the effort to do so is very low.
+
+** Must
+:PROPERTIES:
+:ID:       6893CF22-FA13-475C-89DE-36E7E2B33128
+:END:
+
+*** TODO Implement the software product (“The app”) as a cloud native application
+
+All the pieces that make up “the app” must run on server’s provided by GCP.
+
+*** TODO Software delivered as Cloud run containers
+
+Any piece of custom software must be deployable as a containerized app using cloud run.
+
+*** TODO Build and deploy the app using Cloud build
+
+*** TODO Store and deliver static assets from Cloud Storage
+
+*** TODO The frontend [0/2]
+:PROPERTIES:
+:ID:       1659CF90-34E8-4D6B-BBC8-B347089D2089
+:END:
+
+**** TODO List journeys
+
+See [[id:B4893559-616F-40BF-921F-7D317A7A3233]].
+
+**** TODO For each journey, show [0/3]
+
+Details: [[id:9C02BABD-4912-400F-91BE-7ACE4403DE58]].
+
+***** TODO Departure and return stations
+
+***** TODO Covered distance in kilometers
+
+***** TODO Duration in minutes
+
+** Should
+:PROPERTIES:
+:ID:       1DB8A845-6E20-4E41-86CF-12F6496ED110
+:END:
+
+** Could
+:PROPERTIES:
+:ID:       7FDED9CD-5D9A-4F4E-8726-86548002F5E5
+:END:
+
+*** TODO Run automated tests in GCP
+
+This is a nice to have feature, but not necessary, as breakage after deploys is not world ending.
+
+** Wish
+
+* Resources
+
+** Assignment, requirements specification
+:PROPERTIES:
+:ID:       40872028-9B66-4C60-BCEA-0F8D427CBF74
+:END:
+
+[[https://github.com/solita/dev-academy-2023-exercise]]
+
+** Academy homepage
+
+[[https://www.solita.fi/positions/dev-academy-to-boost-your-software-developer-career-5202331003/]]
+
+** Tips
+
++ [[https://dev.solita.fi/2021/11/04/how-to-pre-assignments.html][Do’s and Dont’s of pre-assignments]]
++ [[https://dev.solita.fi/2023/03/24/how-to-pre-assignments-2.html][Do's and Don'ts of Dev Academy Pre-assignments – Revisited]]
++ [[https://dev.solita.fi/2022/11/01/testing-primer-dev-academy.html][Testing Primer]] – tips on how to test your application
+
+** Datasets
+
+*** Journey dataset
+
+Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]].
+
++ [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv]]
++ [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv]]
++ [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv]]
+
+*** Bicycle station dataset
+
++ Data: [[https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv]]
++ License information: [[https://www.avoindata.fi/data/en/dataset/hsl-n-kaupunkipyoraasemat/resource/a23eef3a-cc40-4608-8aa2-c730d17e8902]]
+
+** Contacts
+
+*** Project contact
+
+[[mailto:pauliinahovila@solita.fi]]
+
+*** Dataset contacts
+:PROPERTIES:
+:ID:       749A080A-801E-4BB1-A8B6-6F4FAC42BE4F
+:END:
+
++ [[mailto:heikki.hamalainen@solita.fi]]
++ [[mailto:meri.merkkiniemi@solita.fi]]
+
+
+* Minutes & Journal
+
+** Get acquainted with the project assignment
+:LOGBOOK:
+CLOCK: [2023-04-01 Sat 20:10]--[2023-04-01 Sat 20:40] =>  0:30
+:END:
+
+** Collect requirements
+:LOGBOOK:
+CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
+:END:
+
+** Exlpore the dataset
+:LOGBOOK:
+CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
+:END:
+
+The journey dataset consists of three files, one file for the data of one month.
+
+CSV header defines the following fields:
++ Departure :: ISO8601 timestamp *without time zone info*
++ Return :: ISO8601 stamp *without time zone info*
++ Departure station id
++ Departure station name
++ Return station id
++ Return station name
++ Covered distance (m)
++ Duration (sec)
+
+#+header: :cache yes
+
+#+header: :cache yes
+#+begin_src python :dir ../dataset/
+import csv
+from collections import namedtuple
+
+f = '2021-05.csv'
+
+JourneyRecord = namedtuple('JourneyRecord', 'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration')
+
+reader = csv.reader(open(f, 'r'))
+# skip the header
+next(reader)
+print(list(map(JourneyRecord._make, reader))[1:2])
+#+end_src
+
+#+RESULTS[bf45f4d86825de81d20e6cb5783f03284aa2ada8]:
+: [JourneyRecord(departure_time='2021-05-31T23:56:59', return_time='2021-06-01T00:07:14', departure_id='082', departure_name='Töölöntulli', return_id='113', return_name='Pasilan asema', distance='1870', duration='611')]
+
+It seem
+
+
+#+begin_src python
+from datetime import datetime
+
+class Journey:
+    def __init__(self, departure_time):
+        self.departure_time = departure_time
+
+    @property
+    def departure_time(self):
+        return self._departure_time
+
+    @departure_time.setter
+    def departure_time(self, departure_time):
+        if isinstance(departure_time, str):
+            departure_time = datetime.fromisoformat(departure_time)
+        if not isinstance(departure_time, datetime):
+            raise ValueError('???')
+
+        self._departure_time = departure_time
+
+    def __repr__(self):
+        return f'Journey({str(self.departure_time)!r})'
+
+print(Journey('2021-05-31T23:56:59'))
+#+end_src
+
+#+RESULTS:
+: Journey('2021-05-31 23:56:59')
+
+* Implementation
+
+** The frontend
+
+“The frontend” implements the [[id:3021535E-D457-4E21-B296-4035BCE2E439][journey list view]], the [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][station list view]], and the [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][single station view]].  Any features involving a viewable map will be offloaded to the [[id:30261BAC-BA61-4A98-AD03-ED6B8EFD3515][map frontend]].
+
+The frontend will be implemented using Python with the [[https://trypyramid.com][Pyramid]] web application framework.  It *must* be served as a containerized application using Cloud run.
+
+See the list of requirements by importance:
+
++ [[id:1659CF90-34E8-4D6B-BBC8-B347089D2089][Must]]
++ Should
++ Could
++ Wish
+
+** The API
+
+** The database
+
+** The datapump
+
+** The map frontend
+:PROPERTIES:
+:ID:       30261BAC-BA61-4A98-AD03-ED6B8EFD3515
+:END:
