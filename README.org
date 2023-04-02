@@ -86,14 +86,29 @@ If you don't implement pagination, use some hard-coded limit for the list length
 :END:
 
 **** Additional
+:PROPERTIES:
+:ID:       7DC9F915-F042-4FD0-8B35-F1CB41822661
+:END:
 
 ***** Pagination
+:PROPERTIES:
+:ID:       C3F75C9E-BF89-4BA2-8FF9-6A0834A5FD9C
+:END:
 
 ***** Ordering per column
+:PROPERTIES:
+:ID:       E0C31B66-06FB-41CE-997D-B0C7263C453C
+:END:
 
 ***** Searching
+:PROPERTIES:
+:ID:       46BC5278-F5AE-4111-81CE-FABBBBDF2CCC
+:END:
 
 ***** Filtering
+:PROPERTIES:
+:ID:       E59913C7-F2CA-46EB-BDF2-F6DDC2DEFCDE
+:END:
 
 *** Station list
 :PROPERTIES:
@@ -101,14 +116,29 @@ If you don't implement pagination, use some hard-coded limit for the list length
 :END:
 
 **** Recommended
+:PROPERTIES:
+:ID:       560F2659-2E0A-43CC-B784-071D774D9305
+:END:
 
 ***** List all the stations
+:PROPERTIES:
+:ID:       2E7F4555-4A42-4A5F-96CD-B917DED9F27F
+:END:
 
 **** Additional
+:PROPERTIES:
+:ID:       501D1AFF-D0DE-4C8F-9557-CFF81447EA1C
+:END:
 
 ***** Pagination
+:PROPERTIES:
+:ID:       57A6951C-D5B4-4ABE-90CC-9737DB955055
+:END:
 
 ***** Searching
+:PROPERTIES:
+:ID:       1A851198-298A-417B-9E16-091C0F722A69
+:END:
 
 *** Single station view
 :PROPERTIES:
@@ -116,32 +146,71 @@ If you don't implement pagination, use some hard-coded limit for the list length
 :END:
 
 **** Recommended
+:PROPERTIES:
+:ID:       3FE0134F-3D02-44E6-B340-28C7100F2AEA
+:END:
 
 ***** Station name
+:PROPERTIES:
+:ID:       A85600E0-7208-4CA2-98A5-C7B4AB286607
+:END:
 
 ***** Station address
+:PROPERTIES:
+:ID:       EDD7F112-7D78-4308-AEBB-EBB652CF1E19
+:END:
 
 ***** Total number of journeys starting from the station
+:PROPERTIES:
+:ID:       8DC3256B-CE71-4C5D-98F8-620F56EA6A4D
+:END:
 
 ***** Total number of journeys ending at the station
+:PROPERTIES:
+:ID:       BF6F35A7-ADFF-473D-9A84-03CA5A7EB6A3
+:END:
 
 **** Additional
+:PROPERTIES:
+:ID:       54FF5C21-84E5-452A-A254-1038B45C98B0
+:END:
 
 ***** Station location on the map
+:PROPERTIES:
+:ID:       32E8AD8C-7075-41E2-857A-3028E260F2A0
+:END:
 
 ***** The average distance of a journey starting from the station
+:PROPERTIES:
+:ID:       BE865AC1-498E-4211-B2E3-D0E6E5748D14
+:END:
 
 ***** The average distance of a journey ending at the station
+:PROPERTIES:
+:ID:       9CE27BCA-212A-4652-926E-0A19EF9B41B4
+:END:
 
 ***** Top 5 most popular return stations for journeys starting from the station
+:PROPERTIES:
+:ID:       D42F365F-AF8D-42DC-8BD9-569C7CE7A633
+:END:
 
 ***** Top 5 most popular departure stations for journeys ending at the station
+:PROPERTIES:
+:ID:       3A44653C-D103-493F-B9BC-E5FD1114E582
+:END:
 
 ***** Ability to filter all the calculations per month
+:PROPERTIES:
+:ID:       FC0D1A36-1AC4-4062-BE61-778E63EEAB71
+:END:
 
 *** Surprise us with
 
 **** Endpoints to store new journeys data or new bicycle stations
+:PROPERTIES:
+:ID:       0E3E7F1C-06BC-4E1D-BD78-070E8C6318BC
+:END:
 
 **** Running backend in Docker
 
@@ -150,6 +219,9 @@ If you don't implement pagination, use some hard-coded limit for the list length
 **** Implement E2E tests
 
 **** Create UI for adding journeys or bicycle stations
+:PROPERTIES:
+:ID:       4105F08E-4AE4-4A2F-BB4F-EC9C9F9B275B
+:END:
 
 * Requirements
 
@@ -172,7 +244,9 @@ Any piece of custom software must be deployable as a containerized app using clo
 
 *** TODO Store and deliver static assets from Cloud Storage
 
-*** TODO The frontend [0/2]
+*** TODO Implement end-to-end tests
+
+*** TODO The frontend [0/4]
 :PROPERTIES:
 :ID:       1659CF90-34E8-4D6B-BBC8-B347089D2089
 :END:
@@ -191,21 +265,121 @@ Details: [[id:9C02BABD-4912-400F-91BE-7ACE4403DE58]].
 
 ***** TODO Duration in minutes
 
+**** TODO Station list [0/1]
+
+See [[id:560F2659-2E0A-43CC-B784-071D774D9305]].
+
+***** TODO List all the stations
+
+See [[id:2E7F4555-4A42-4A5F-96CD-B917DED9F27F]].
+
+**** TODO Single station view [0/4]
+
+See [[id:3FE0134F-3D02-44E6-B340-28C7100F2AEA]].
+
+***** TODO Station name
+
+See [[id:A85600E0-7208-4CA2-98A5-C7B4AB286607]].
+
+***** TODO Station address
+
+See [[id:EDD7F112-7D78-4308-AEBB-EBB652CF1E19]].
+
+***** TODO Total number of journeys starting from the station
+
+See [[id:8DC3256B-CE71-4C5D-98F8-620F56EA6A4D]].
+
+***** TODO Total number of journeys ending at the station
+
+See [[id:BF6F35A7-ADFF-473D-9A84-03CA5A7EB6A3]].
+
 ** Should
 :PROPERTIES:
 :ID:       1DB8A845-6E20-4E41-86CF-12F6496ED110
 :END:
+
+*** TODO The frontend [0/3]
+
+**** TODO List journeys [0/4]
+
+See [[id:7DC9F915-F042-4FD0-8B35-F1CB41822661]].
+
+***** TODO Implement paginatioin
+
+See [[id:C3F75C9E-BF89-4BA2-8FF9-6A0834A5FD9C]].
+
+***** TODO Implement ordering per column
+
+See [[id:E0C31B66-06FB-41CE-997D-B0C7263C453C]].
+
+***** TODO Searching
+
+See [[id:46BC5278-F5AE-4111-81CE-FABBBBDF2CCC]].
+
+***** TODO Filtering
+
+See [[id:E59913C7-F2CA-46EB-BDF2-F6DDC2DEFCDE]].
+
+**** TODO Station list [0/2]
+
+See [[id:501D1AFF-D0DE-4C8F-9557-CFF81447EA1C]].
+
+***** TODO Pagination
+
+See [[id:57A6951C-D5B4-4ABE-90CC-9737DB955055]].
+
+***** TODO Searching
+
+See [[id:1A851198-298A-417B-9E16-091C0F722A69]].
+
+**** TODO Single station view [0/6]
+
+See [[id:54FF5C21-84E5-452A-A254-1038B45C98B0]].
+
+***** TODO Station location on the map(!)
+
+See [[id:32E8AD8C-7075-41E2-857A-3028E260F2A0]].
+
+This seems like a very big task, as it is the only requirement in the assignment that references an actual map
+
+***** TODO Average distance of a journey starting from the station
+
+See [[id:BE865AC1-498E-4211-B2E3-D0E6E5748D14]].
+
+***** TODO Average distance of a journey ending at the station
+
+See [[id:9CE27BCA-212A-4652-926E-0A19EF9B41B4]].
+
+***** TODO 5 most popular return stations jor journeys starting from the station
+
+See [[id:D42F365F-AF8D-42DC-8BD9-569C7CE7A633]].
+
+***** TODO 5 most popular departure stations jor journeys ending at the station
+
+See [[id:3A44653C-D103-493F-B9BC-E5FD1114E582]].
+
+***** TODO Ability fo filter all the calculations per month
+
+See [[id:FC0D1A36-1AC4-4062-BE61-778E63EEAB71]].
 
 ** Could
 :PROPERTIES:
 :ID:       7FDED9CD-5D9A-4F4E-8726-86548002F5E5
 :END:
 
+** Wish
+
 *** TODO Run automated tests in GCP
 
-This is a nice to have feature, but not necessary, as breakage after deploys is not world ending.
+This is a nice to have feature, but not necessary, as breakage after deploys is not world ending.  It also is not a functional requirement.
 
-** Wish
+*** TODO Endpoints to store new journeys data or new bicycle stations
+
+See [[id:0E3E7F1C-06BC-4E1D-BD78-070E8C6318BC]].
+
+*** TODO Create UI for adding journeys or bicycle stationc
+
+See [[id:4105F08E-4AE4-4A2F-BB4F-EC9C9F9B275B]].
 
 * Resources
 
@@ -255,7 +429,6 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 + [[mailto:heikki.hamalainen@solita.fi]]
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
-
 * Minutes & Journal
 
 ** Get acquainted with the project assignment
@@ -265,6 +438,7 @@ CLOCK: [2023-04-01 Sat 20:10]--[2023-04-01 Sat 20:40] =>  0:30
 
 ** Collect requirements
 :LOGBOOK:
+CLOCK: [2023-04-02 Sun 09:04]--[2023-04-02 Sun 09:37] =>  0:33
 CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :END:
 
