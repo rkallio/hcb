@@ -447,6 +447,7 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :header-args: :noweb yes
 :END:
 :LOGBOOK:
+CLOCK: [2023-04-02 Sun 09:38]--[2023-04-02 Sun 10:05] =>  0:27
 CLOCK: [2023-04-01 Sat 22:51]--[2023-04-01 Sat 23:46] =>  0:55
 CLOCK: [2023-04-01 Sat 22:29]--[2023-04-01 Sat 22:38] =>  0:09
 CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
@@ -647,7 +648,6 @@ class Journey:
         )
 #+end_src
 
-
 We can check with the parser if all the data is now parseable.
 
 #+header: :cache yes
@@ -658,7 +658,6 @@ import traceback
 
 files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
 
-<<JourneyRecordTuple>>
 <<JourneyParser>>
 
 def try_parse(journey_record):
@@ -677,9 +676,76 @@ for f in files:
 
 #+RESULTS[6b314abaa957fbe31922465789c4ad91639619ee]:
 
-And this resulted in no output, so we have a good enough parser for the data.
+Since this results in no output, we have a good enough parser for the data.
+
+We can dump the data into a sqlite3 database.
+
+#+header: :cache yes
+#+header: :dir ../dataset/
+#+begin_src python
+import sqlite3
+
+con = sqlite3.connect("journey.db")
+cur = con.cursor()
+query = """
+CREATE TABLE IF NOT EXISTS journey(
+  departure_time,
+  return_time,
+  departure_station_id,
+  departure_station_name,
+  return_station_id,
+  return_station_name,
+  distance,
+  duration
+)
+"""
+cur.execute(query)
+tables = cur.execute("SELECT name from sqlite_master")
+
+<<JourneyParser>>
+
+import csv
+
+files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
+for f in files:
+    reader = csv.reader(open(f, 'r', newline=''))
+    # skip the header
+    next(reader)
+    for journey in map(
+            Journey.from_journey_record,
+            (map(JourneyRecord._make, reader))):
+        cur.execute(
+            "INSERT INTO journey VALUES(?, ?, ?, ?, ?, ?, ? ,?)",
+            (journey.departure_time,
+             journey.return_time,
+             journey.departure_station_id,
+             journey.departure_station_name,
+             journey.return_station_id,
+             journey.return_station_name,
+             journey.distance,
+             journey.duration)
+        )
+con.commit()
+con.close()
+#+end_src
+
+#+RESULTS[a754e722ce2e73a672bfd92b059904ac186de661]:
+
+And then look up stuff I guess.
+
+#+header: :dir ../dataset
+#+begin_src python
+import sqlite3
+
+con = sqlite3.connect("journey.db")
+query = "SELECT * FROM journey LIMIT 1"
+res=con.execute(query)
+print(res.fetchone())
+con.close()
+#+end_src
 
 #+RESULTS:
+: ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
 
 * Implementation
 
