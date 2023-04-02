@@ -750,6 +750,9 @@ con.close()
 * Implementation
 
 ** The frontend
+:PROPERTIES:
+:header-args: :mkdirp yes
+:END:
 
 “The frontend” implements the [[id:3021535E-D457-4E21-B296-4035BCE2E439][journey list view]], the [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][station list view]], and the [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][single station view]].  Any features involving a viewable map will be offloaded to the [[id:30261BAC-BA61-4A98-AD03-ED6B8EFD3515][map frontend]].
 
@@ -758,9 +761,307 @@ The frontend will be implemented using Python with the [[https://trypyramid.com]
 See the list of requirements by importance:
 
 + [[id:1659CF90-34E8-4D6B-BBC8-B347089D2089][Must]]
-+ Should
++ [[id:27D03FC8-96B7-4F0B-94C0-A1E027CBADB0][Should]]
 + Could
-+ Wish
++ [[id:B1773244-DBCA-4154-92DB-54D718912754][Wish]]
+
+*** Python boilerplate
+
+#+header: :tangle hcbf/CHANGES.txt
+#+begin_src text
+0.0
+---
+
+- Initial version.
+#+end_src
+
+#+header: :tangle hcbf/MANIFEST.in
+#+begin_src text
+include *.txt *.ini *.cfg *.rst
+recursive-include hcbf *.ico *.png *.css *.gif *.jpg *.pt *.txt *.mak *.mako *.js *.html *.xml *.jinja2
+recursive-include tests *
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+#+end_src
+
+#+header: :tangle hcbf/README.txt
+#+begin_src text
+hcbf
+====
+
+Getting Started
+---------------
+
+- Change directory into your newly created project if not already there. Your
+  current directory should be the same as this README.txt file and setup.py.
+
+    cd hcbf
+
+- Create a Python virtual environment, if not already created.
+
+    python3 -m venv env
+
+- Upgrade packaging tools, if necessary.
+
+    env/bin/pip install --upgrade pip setuptools
+
+- Install the project in editable mode with its testing requirements.
+
+    env/bin/pip install -e ".[testing]"
+
+- Run your project's tests.
+
+    env/bin/pytest
+
+- Run your project.
+
+    env/bin/pserve development.ini
+#+end_src
+
+#+header: :tangle hcbf/development.ini
+#+begin_src conf-unix
+###
+# app configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/environment.html
+###
+
+[app:main]
+use = egg:hcbf
+
+pyramid.reload_templates = true
+pyramid.debug_authorization = false
+pyramid.debug_notfound = false
+pyramid.debug_routematch = false
+pyramid.default_locale_name = en
+pyramid.includes =
+    pyramid_debugtoolbar
+
+# By default, the toolbar only appears for clients from IP addresses
+# '127.0.0.1' and '::1'.
+# debugtoolbar.hosts = 127.0.0.1 ::1
+
+###
+# wsgi server configuration
+###
+
+[server:main]
+use = egg:waitress#main
+listen = localhost:6543
+
+###
+# logging configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/logging.html
+###
+
+[loggers]
+keys = root, hcbf
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = INFO
+handlers = console
+
+[logger_hcbf]
+level = DEBUG
+handlers =
+qualname = hcbf
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(asctime)s %(levelname)-5.5s [%(name)s:%(lineno)s][%(threadName)s] %(message)s
+#+end_src
+
+#+header: :tangle hcbf/production.ini
+#+begin_src conf-unix
+###
+# app configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/environment.html
+###
+
+[app:main]
+use = egg:hcbf
+
+pyramid.reload_templates = false
+pyramid.debug_authorization = false
+pyramid.debug_notfound = false
+pyramid.debug_routematch = false
+pyramid.default_locale_name = en
+
+###
+# wsgi server configuration
+###
+
+[server:main]
+use = egg:waitress#main
+listen = *:6543
+
+###
+# logging configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/logging.html
+###
+
+[loggers]
+keys = root, hcbf
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = WARN
+handlers = console
+
+[logger_hcbf]
+level = WARN
+handlers =
+qualname = hcbf
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(asctime)s %(levelname)-5.5s [%(name)s:%(lineno)s][%(threadName)s] %(message)s
+#+end_src
+
+#_header: :tangle hcbf/pytest.ini
+#+begin_src conf-unix
+[pytest]
+addopts = --strict-markers
+
+testpaths =
+    hcbf
+    tests
+#+end_src
+
+#+header: :tangle hcbf/setup.py
+#+begin_src python
+import os
+
+from setuptools import setup, find_packages
+
+here = os.path.abspath(os.path.dirname(__file__))
+with open(os.path.join(here, 'README.txt')) as f:
+    README = f.read()
+with open(os.path.join(here, 'CHANGES.txt')) as f:
+    CHANGES = f.read()
+
+requires = [
+    'plaster_pastedeploy',
+    'pyramid',
+    'pyramid_jinja2',
+    'pyramid_debugtoolbar',
+    'waitress',
+]
+
+tests_require = [
+    'WebTest',
+    'pytest',
+    'pytest-cov',
+]
+
+setup(
+    name='hcbf',
+    version='0.0',
+    description='hcbf',
+    long_description=README + '\n\n' + CHANGES,
+    classifiers=[
+        'Programming Language :: Python',
+        'Framework :: Pyramid',
+        'Topic :: Internet :: WWW/HTTP',
+        'Topic :: Internet :: WWW/HTTP :: WSGI :: Application',
+    ],
+    author='',
+    author_email='',
+    url='',
+    keywords='web pyramid pylons',
+    packages=find_packages(exclude=['tests']),
+    include_package_data=True,
+    zip_safe=False,
+    extras_require={
+        'testing': tests_require,
+    },
+    install_requires=requires,
+    entry_points={
+        'paste.app_factory': [
+            'main = hcbf:main',
+        ],
+    },
+)
+#+end_src
+
+#+header: :tangle hcbf/testing.ini
+#+begin_src python
+###
+# app configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/environment.html
+###
+
+[app:main]
+use = egg:hcbf
+
+pyramid.reload_templates = false
+pyramid.debug_authorization = false
+pyramid.debug_notfound = false
+pyramid.debug_routematch = false
+pyramid.default_locale_name = en
+
+###
+# wsgi server configuration
+###
+
+[server:main]
+use = egg:waitress#main
+listen = localhost:6543
+
+###
+# logging configuration
+# https://docs.pylonsproject.org/projects/pyramid/en/latest/narr/logging.html
+###
+
+[loggers]
+keys = root, hcbf
+
+[handlers]
+keys = console
+
+[formatters]
+keys = generic
+
+[logger_root]
+level = INFO
+handlers = console
+
+[logger_hcbf]
+level = DEBUG
+handlers =
+qualname = hcbf
+
+[handler_console]
+class = StreamHandler
+args = (sys.stderr,)
+level = NOTSET
+formatter = generic
+
+[formatter_generic]
+format = %(asctime)s %(levelname)-5.5s [%(name)s:%(lineno)s][%(threadName)s] %(message)s
+#+end_src
+
+
 
 ** The API
 
