@@ -1,5 +1,28 @@
 {% extends "layout.jinja2" %}
-
 {% block content %}
-  <p>Hello world</p>
+  <table>
+    <thead>
+      <tr>
+        <th>Departure station</th>
+        <th>Return station</th>
+        <th>Covered distance (m)</th>
+        <th>Duration (s)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for journey in journeys %}
+        <tr>
+          <td>{{ journey[3] }}</td>
+          <td>{{ journey[5] }}</td>
+          <td>{{ journey[6] }}</td>
+          <td>{{ journey[7] }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div>
+    <a href="{{ previous_page }}">Previous</a>
+    {{ current_page_number }}
+    <a href="{{ next_page }}">Next</a>
+  </div>
 {% endblock content %}
