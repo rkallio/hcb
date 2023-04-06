@@ -1,7 +1,7 @@
 from pyramid.view import view_config
 
 
-@view_config(route_name='home', renderer='hcbf:templates/mytemplate.jinja2')
+@view_config(route_name='journeys_list', renderer='hcbf:templates/journeys-list.jinja2')
 def my_view(request):
     page = request.params.get('page', '1')
     page = int(page)
