@@ -781,7 +781,7 @@ con.close()
 
 ** Write first implementation journeys list view
 :LOGBOOK:
-CLOCK: [2023-04-06 Thu 12:20]
+CLOCK: [2023-04-06 Thu 12:20]--[2023-04-06 Thu 13:18] =>  0:58
 CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
 CLOCK: [2023-04-02 Sun 10:22]--[2023-04-02 Sun 12:10] =>  1:48
 :END:
@@ -791,6 +791,8 @@ Now that we have an sqlite database of the journey data, we can start implementi
 Spent the first 45 minutes fighting with setuptools because the directory I had the package in contained a space, great success.
 
 Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cookiecutter-starter]].  Project is in directory [[file:hcbf/]].
+
+Journeys list view now exists, it fetches data straight from an sqlite database.  Implements pagination and the recommended fields.
 
 ** Mock up journeys list view
 :LOGBOOK:
