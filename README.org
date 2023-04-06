@@ -779,16 +779,22 @@ con.close()
 #+RESULTS:
 : ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
 
-** Write first implementation of frontend
+** Write first implementation journeys list view
 :LOGBOOK:
+CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
 CLOCK: [2023-04-02 Sun 10:22]--[2023-04-02 Sun 12:10] =>  1:48
 :END:
 
-Now that we have an sqlite database of the journey data, we can start implementing the frontend.  The “backend” used is going to be the sqlite database.
+Now that we have an sqlite database of the journey data, we can start implementing its view.  The “backend” used is going to be the sqlite database.
 
 Spent the first 45 minutes fighting with setuptools because the directory I had the package in contained a space, great success.
 
 Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cookiecutter-starter]].  Project is in directory [[file:hcbf/]].
+
+** Mock up journeys list view
+:LOGBOOK:
+CLOCK: [2023-04-06 Thu 10:45]--[2023-04-06 Thu 10:54] =>  0:09
+:END:
 
 * Implementation
 
