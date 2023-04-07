@@ -893,6 +893,7 @@ How do I get this bad boy to Google SQL cheaply?
 
 ** Write the frontend
 :LOGBOOK:
+CLOCK: [2023-04-07 Fri 20:04]--[2023-04-07 Fri 20:29] =>  0:25
 CLOCK: [2023-04-07 Fri 15:29]--[2023-04-07 Fri 15:40] =>  0:11
 CLOCK: [2023-04-07 Fri 14:29]--[2023-04-07 Fri 15:15] =>  0:46
 CLOCK: [2023-04-06 Thu 12:20]--[2023-04-06 Thu 13:18] =>  0:58
@@ -909,6 +910,8 @@ Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cook
 Journeys list view now exists, it fetches data straight from an sqlite database.  Implements pagination and the recommended fields.
 
 Converted the frontend from pyramid to flask.
+
+Added support for pgsql data source.
 
 ** Mock up journeys list view
 :LOGBOOK:
@@ -1162,27 +1165,90 @@ See the list of requirements by importance:
 #+header: :tangle hcbf/requirements.txt
 #+begin_src text
 Flask
+psycopg2-binary
 #+end_src
 
 #+header: :tangle hcbf/main.py
 #+begin_src python
 from flask import Flask, render_template, request
+import psycopg2
 import sqlite3
 import os
-import journey
+from journey import JourneyRecord
+from abc import ABC, abstractmethod
+from collections import namedtuple
 
 app = Flask(__name__)
+
+class Database(ABC):
+    @abstractmethod
+    def get_journeys(self, offset, limit):
+        return NotImplemented
+
+class SqliteDB(Database):
+    def __init__(self, connection_string):
+        self.connection_string = connection_string
+        self.connection = sqlite3.connect(connection_string)
+
+    def get_journeys(self, page, page_size):
+        SQL = """
+        SELECT * FROM journey
+        LIMIT ?
+        OFFSET ?
+        """
+        offset = (page - 1) * page_size
+        response = self.connection.execute(SQL, (page_size, offset))
+        values = response.fetchall()
+        return [JourneyRecord._make(value) for value in values]
+
+class PostgreDB(Database):
+    # postgre db contains an index (id)
+    JourneyRecord = namedtuple(
+        'JourneyRecord',
+        'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration,id'
+    )
+
+    def __init__(self, database, user, password, host, port):
+        self.database = database
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+        self.connection = psycopg2.connect(
+            database=self.database,
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port
+        )
+
+    def get_journeys(self, page, page_size):
+        SQL = """
+        SELECT * FROM journey
+        ORDER BY id ASC
+        LIMIT %s
+        OFFSET %s
+        """
+        offset = (page - 1) * page_size
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (page_size, offset))
+            values = cursor.fetchall()
+        return [PostgreDB.JourneyRecord._make(value) for value in values]
 
 @app.route('/journeys')
 def journeys():
     page_size = 20
-    query = "SELECT * FROM journey LIMIT ? OFFSET ?"
     # page indexing starts at 1
     page = max(1, int(request.args.get('page', '1')))
-    offset = (page - 1) * page_size
-    with sqlite3.connect(os.environ['SQLITE_DB']) as db:
-        resp = db.execute(query, (page_size, offset,))
-    journeys = map(journey.JourneyRecord._make, resp.fetchall())
+    db = SqliteDB(os.environ['SQLITE_DB'])
+    pgdb = PostgreDB(
+        os.environ['PSQL_DB'],
+        os.environ['PSQL_USER'],
+        os.environ['PSQL_PASS'],
+        os.environ['PSQL_HOST'],
+        os.environ['PSQL_PORT']
+    )
+    journeys = pgdb.get_journeys(page, page_size)
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
     return render_template(
