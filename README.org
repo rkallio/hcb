@@ -481,6 +481,8 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :ID:       8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A
 :END:
 :LOGBOOK:
+CLOCK: [2023-04-07 Fri 19:44]--[2023-04-07 Fri 19:46] =>  0:02
+CLOCK: [2023-04-07 Fri 15:58]--[2023-04-07 Fri 18:51] =>  1:38
 CLOCK: [2023-04-02 Sun 09:38]--[2023-04-02 Sun 10:05] =>  0:27
 CLOCK: [2023-04-01 Sat 22:51]--[2023-04-01 Sat 23:46] =>  0:55
 CLOCK: [2023-04-01 Sat 22:29]--[2023-04-01 Sat 22:38] =>  0:09
@@ -712,7 +714,7 @@ for f in files:
 
 Since this results in no output, we have a good enough parser for the data.
 
-We can dump the data into a sqlite3 database.
+We can dump the data into an sqlite3 database.
 
 #+header: :cache yes
 #+header: :dir ../dataset/
@@ -781,9 +783,117 @@ con.close()
 #+RESULTS:
 : ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
 
+And then push to a psql server
+
+#+begin_src sh
+podman network create postgres
+podman run --rm -d \
+       --name postgres-server \
+       --network=postgres \
+       -p5432:5432 \
+       -e POSTGRES_PASSWORD=postgres \
+       postgres
+#+end_src
+
+#+header: :tangle ../dataset/export-to-psql-requirements.txt
+#+begin_src text
+psycopg2-binary
+#+end_src
+
+#+header: :tangle ../dataset/export-to-psql.py
+#+begin_src python
+import psycopg2
+import os
+
+
+conn = psycopg2.connect(
+    database=os.environ['PSQL_POSTGRES_DB'],
+    user=os.environ['PSQL_USER'],
+    password=os.environ['PSQL_PASS'],
+    host=os.environ['PSQL_HOST'],
+    port=os.environ['PSQL_PORT']
+)
+
+conn.autocommit = True
+
+from psycopg2.errors import DuplicateDatabase
+
+try:
+    with conn.cursor() as cur:
+        cur.execute("CREATE DATABASE hcb")
+except DuplicateDatabase:
+    pass
+finally:
+    conn.close()
+
+conn = psycopg2.connect(
+    database='hcb',
+    user=os.environ['PSQL_USER'],
+    password=os.environ['PSQL_PASS'],
+    host=os.environ['PSQL_HOST'],
+    port=os.environ['PSQL_PORT']
+)
+conn.autocommit = False
+
+SQL = """
+CREATE TABLE IF NOT EXISTS journey (
+departure_time TIMESTAMP,
+return_time TIMESTAMP,
+departure_station_id TEXT,
+departure_station_name TEXT,
+return_station_id TEXT,
+return_station_name TEXT,
+distance FLOAT,
+duration INTEGER
+)
+"""
+
+cur = conn.cursor()
+cur.execute(SQL)
+SQL = "INSERT INTO journey VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
+
+import sqlite3
+
+scon = sqlite3.connect("journey.db")
+query = "SELECT * FROM journey"
+res=scon.execute(query)
+
+<<JourneyParser>>
+
+for i, journey in enumerate(map(Journey.from_journey_record, map(JourneyRecord._make, res.fetchall()))):
+    cur.execute(
+        SQL,
+        (
+            journey.departure_time,
+            journey.return_time,
+            journey.departure_station_id,
+            journey.departure_station_name,
+            journey.return_station_id,
+            journey.return_station_name,
+            journey.distance,
+            journey.duration
+        )
+    )
+    if i % 1000 == 0:
+        print(i)
+
+conn.commit()
+scon.close()
+conn.close()
+#+end_src
+
+Need an index if I want to implement stable sorting.
+
+#+begin_src sql
+ALTER TABLE journey
+ADD COLUMN id SERIAL PRIMARY KEY;
+#+end_src
+
+How do I get this bad boy to Google SQL cheaply?
+
 ** Write the frontend
 :LOGBOOK:
-CLOCK: [2023-04-07 Fri 15:29]
+CLOCK: [2023-04-07 Fri 15:29]--[2023-04-07 Fri 15:40] =>  0:11
 CLOCK: [2023-04-07 Fri 14:29]--[2023-04-07 Fri 15:15] =>  0:46
 CLOCK: [2023-04-06 Thu 12:20]--[2023-04-06 Thu 13:18] =>  0:58
 CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
