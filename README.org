@@ -40,12 +40,13 @@
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
-  - [[#write-first-implementation-of-frontend][Write first implementation of frontend]]
+  - [[#write-the-frontend][Write the frontend]]
+  - [[#mock-up-journeys-list-view][Mock up journeys list view]]
+  - [[#explore-hosting-options-on-google-cloud][Explore hosting options on google cloud]]
+  - [[#set-up-cloud-sql][Set up cloud SQL]]
 - [[#implementation][Implementation]]
   - [[#the-frontend-1][The frontend]]
-    - [[#python-boilerplate][Python boilerplate]]
-    - [[#tests][Tests]]
-    - [[#code][Code]]
+    - [[#journey-list-view-1][Journey list view]]
   - [[#the-backend][The backend]]
   - [[#the-database][The database]]
   - [[#the-datapump][The datapump]]
@@ -477,6 +478,7 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 ** Explore the dataset
 :PROPERTIES:
 :header-args: :noweb yes
+:ID:       8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A
 :END:
 :LOGBOOK:
 CLOCK: [2023-04-02 Sun 09:38]--[2023-04-02 Sun 10:05] =>  0:27
@@ -779,8 +781,9 @@ con.close()
 #+RESULTS:
 : ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
 
-** Write first frontend
+** Write the frontend
 :LOGBOOK:
+CLOCK: [2023-04-07 Fri 15:29]
 CLOCK: [2023-04-07 Fri 14:29]--[2023-04-07 Fri 15:15] =>  0:46
 CLOCK: [2023-04-06 Thu 12:20]--[2023-04-06 Thu 13:18] =>  0:58
 CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
@@ -1044,6 +1047,8 @@ See the list of requirements by importance:
 + Could
 + [[id:B1773244-DBCA-4154-92DB-54D718912754][Wish]]
 
+*** Journey list view
+
 #+header: :tangle hcbf/requirements.txt
 #+begin_src text
 Flask
@@ -1054,7 +1059,7 @@ Flask
 from flask import Flask, render_template, request
 import sqlite3
 import os
-
+import journey
 
 app = Flask(__name__)
 
@@ -1067,7 +1072,7 @@ def journeys():
     offset = (page - 1) * page_size
     with sqlite3.connect(os.environ['SQLITE_DB']) as db:
         resp = db.execute(query, (page_size, offset,))
-    journeys = resp.fetchall()
+    journeys = map(journey.JourneyRecord._make, resp.fetchall())
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
     return render_template(
@@ -1103,10 +1108,10 @@ if __name__ == "__main__":
       <tbody>
         {% for journey in journeys %}
           <tr>
-            <td>{{ journey[3] }}</td>
-            <td>{{ journey[5] }}</td>
-            <td>{{ journey[6] }}</td>
-            <td>{{ journey[7] }}</td>
+            <td>{{ journey.departure_name }}</td>
+            <td>{{ journey.return_name }}</td>
+            <td>{{ journey.distance }}</td>
+            <td>{{ journey.duration }}</td>
           </tr>
         {% endfor %}
       </tbody>
@@ -1125,6 +1130,14 @@ if __name__ == "__main__":
 #+header: :tangle hcbf/static/style.css
 #+begin_src css
 
+#+end_src
+
+We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
+
+#+header: :tangle hcbf/journey.py
+#+header: :noweb yes
+#+begin_src python
+<<JourneyParser>>
 #+end_src
 
 
