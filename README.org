@@ -779,8 +779,9 @@ con.close()
 #+RESULTS:
 : ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
 
-** Write first implementation journeys list view
+** Write first frontend
 :LOGBOOK:
+CLOCK: [2023-04-07 Fri 14:29]--[2023-04-07 Fri 15:15] =>  0:46
 CLOCK: [2023-04-06 Thu 12:20]--[2023-04-06 Thu 13:18] =>  0:58
 CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
 CLOCK: [2023-04-02 Sun 10:22]--[2023-04-02 Sun 12:10] =>  1:48
@@ -794,6 +795,8 @@ Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cook
 
 Journeys list view now exists, it fetches data straight from an sqlite database.  Implements pagination and the recommended fields.
 
+Converted the frontend from pyramid to flask.
+
 ** Mock up journeys list view
 :LOGBOOK:
 CLOCK: [2023-04-06 Thu 12:09]--[2023-04-06 Thu 12:19] =>  0:10
@@ -802,6 +805,7 @@ CLOCK: [2023-04-06 Thu 10:45]--[2023-04-06 Thu 10:54] =>  0:09
 
 ** Explore hosting options on google cloud
 :LOGBOOK:
+CLOCK: [2023-04-06 Thu 21:39]--[2023-04-06 Thu 22:23] =>  0:44
 CLOCK: [2023-04-06 Thu 16:40]--[2023-04-06 Thu 17:46] =>  1:06
 CLOCK: [2023-04-06 Thu 14:59]--[2023-04-06 Thu 15:45] =>  0:46
 CLOCK: [2023-04-06 Thu 13:21]--[2023-04-06 Thu 13:41] =>  0:20
@@ -861,10 +865,11 @@ def root():
     # For the sake of example, use static information to inflate the
     # template.  This will be replaced with real information in later
     # steps.
-    dummy_times = [datetime.datetime(2018, 1, 1, 10, 0, 0),
-                   datetime.datetime(2018, 1, 2, 10, 30, 0),
-                   datetime.datetime(2018, 1, 3, 11, 0, 0),
-                   ]
+    dummy_times = [
+        datetime.datetime(2018, 1, 1, 10, 0, 0),
+        datetime.datetime(2018, 1, 2, 10, 30, 0),
+        datetime.datetime(2018, 1, 3, 11, 0, 0),
+    ]
 
     return render_template('index.html', times=dummy_times)
 
@@ -930,12 +935,102 @@ handlers:
   script: auto
 #+end_src
 
+Here's an updated main.py that pushes and pulls data from datastore.
+
+#+header: :tangle app-engine/main.py
+#+begin_src python
+from google.cloud import datastore
+import datetime
+from flask import Flask, render_template
+
+datastore_client = datastore.Client()
+
+def store_time(dt):
+    entity = datastore.Entity(key=datastore_client.key('visit'))
+    entity.update({
+        'timestamp': dt
+    })
+
+    datastore_client.put(entity)
+
+
+def fetch_times(limit):
+    query = datastore_client.query(kind='visit')
+    query.order = ['-timestamp']
+
+    times = query.fetch(limit=limit)
+
+    return times
+
+app = Flask(__name__)
+
+@app.route('/')
+def root():
+    # Store the current access time in Datastore.
+    store_time(datetime.datetime.now(tz=datetime.timezone.utc))
+
+    # Fetch the most recent 10 access times from Datastore.
+    times = fetch_times(10)
+
+    return render_template(
+        'index.html', times=times)
+
+if __name__ == '__main__':
+    # This is used when running locally only. When deploying to Google
+    # App Engine, a webserver process such as Gunicorn will serve the
+    # app. This can be configured by adding an `entrypoint` to
+    # app.yaml.  Flask's development server will automatically serve
+    # static files in the "static" directory. See:
+    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once
+    # deployed, App Engine itself will serve those files as configured
+    # in app.yaml.
+    app.run(host='127.0.0.1', port=8080, debug=True)
+#+end_src
+
+And here's an updated index.html
+
+#+header: :tangle app-engine/templates/index.html
+#+begin_src jinja2
+<!doctype html>
+<html>
+  <head>
+    <title>Datastore and Firebase Auth Example</title>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <h1>Datastore and Firebase Auth Example</h1>
+    <h2>Last 10 visits</h2>
+    {% for time in times %}
+      <p>{{ time['timestamp'] }}</p>
+    {% endfor %}
+  </body>
+</html>
+#+end_src
+
+#+header: :tangle app-engine/requirements.txt
+#+begin_src text
+Flask==2.1.0
+google-cloud-datastore==2.7.1
+#+end_src
+
+Had to run the following to successfully connect to datastore:
+
+#+begin_src sh
+gcloud auth application-default login
+GCLOUD_PROJECT=focal-disk-380217 ./app-engine/bin/python main.py
+#+end_src
+
+** Set up cloud SQL
+:LOGBOOK:
+CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
+:END:
 
 * Implementation
 
 ** The frontend
 :PROPERTIES:
-:header-args:python: :mkdirp yes :comments link
+:header-args: :mkdirp yes :comments link
 :END:
 
 “The frontend” implements the [[id:3021535E-D457-4E21-B296-4035BCE2E439][journey list view]], the [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][station list view]], and the [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][single station view]].  Any features involving a viewable map will be offloaded to the [[id:30261BAC-BA61-4A98-AD03-ED6B8EFD3515][map frontend]].
@@ -948,6 +1043,90 @@ See the list of requirements by importance:
 + [[id:27D03FC8-96B7-4F0B-94C0-A1E027CBADB0][Should]]
 + Could
 + [[id:B1773244-DBCA-4154-92DB-54D718912754][Wish]]
+
+#+header: :tangle hcbf/requirements.txt
+#+begin_src text
+Flask
+#+end_src
+
+#+header: :tangle hcbf/main.py
+#+begin_src python
+from flask import Flask, render_template, request
+import sqlite3
+import os
+
+
+app = Flask(__name__)
+
+@app.route('/journeys')
+def journeys():
+    page_size = 20
+    query = "SELECT * FROM journey LIMIT ? OFFSET ?"
+    # page indexing starts at 1
+    page = max(1, int(request.args.get('page', '1')))
+    offset = (page - 1) * page_size
+    with sqlite3.connect(os.environ['SQLITE_DB']) as db:
+        resp = db.execute(query, (page_size, offset,))
+    journeys = resp.fetchall()
+    previous_page = None if page == 1 else page - 1
+    next_page = page + 1
+    return render_template(
+        'journeys.html.j2',
+        journeys=journeys,
+        previous_page = previous_page,
+        page = page,
+        next_page = next_page
+    )
+
+if __name__ == "__main__":
+    app.run(host='127.0.0.1', port=8080, debug=True)
+#+end_src
+
+#+header: :tangle hcbf/templates/journeys.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html>
+  <head>
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <h1>Helsinki city bike journeys</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Departure station</th>
+          <th>Return station</th>
+          <th>Covered distance (m)</th>
+          <th>Duration (s)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for journey in journeys %}
+          <tr>
+            <td>{{ journey[3] }}</td>
+            <td>{{ journey[5] }}</td>
+            <td>{{ journey[6] }}</td>
+            <td>{{ journey[7] }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pager">
+      {% if previous_page is not none %}
+        <a href="{{ url_for('journeys', page=previous_page) }}">Previous</a>
+      {% endif %}
+      {{ page }}
+      <a href="{{ url_for('journeys', page=next_page) }}">Next</a>
+    </div>
+  </body>
+</html>
+#+end_src
+
+#+header: :tangle hcbf/static/style.css
+#+begin_src css
+
+#+end_src
+
 
 ** The backend
 
