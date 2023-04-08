@@ -923,6 +923,47 @@ wc -l 2021-0?.csv journeys.csv
 | 1623501 | journeys.csv |
 | 4870506 | total        |
 
+
+We want to get the count of departures and returns associated with a station:
+
+#+header: :engine postgres
+#+header: :database hcb
+#+header: :dbuser postgres
+#+header: :dbpassword postgres
+#+header: :dbhost localhost
+#+header: :dbport 5432
+#+begin_src sql
+WITH station AS (
+     SELECT *
+     FROM station
+     WHERE fid = 1
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+    ) as departures,
+    ( SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+    ) as returns
+)
+SELECT station.fid, station.english_name, station.finnish_address, returns, departures
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+#+end_src
+
+#+RESULTS:
+| fid | english_name | finnish_address   | returns | departures |
+|-----+--------------+-------------------+---------+------------|
+|   1 | Hanasaari    | Hanasaarenranta 1 |    5072 |       4930 |
+
 *** Station CSV
 :LOGBOOK:
 CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
@@ -1212,7 +1253,8 @@ conn.close()
 
 ** Write the frontend
 :LOGBOOK:
-CLOCK: [2023-04-08 Sat 22:36]
+CLOCK: [2023-04-08 Sat 23:02]
+CLOCK: [2023-04-08 Sat 22:36]--[2023-04-08 Sat 23:02] =>  0:26
 CLOCK: [2023-04-08 Sat 21:28]--[2023-04-08 Sat 21:39] =>  0:11
 CLOCK: [2023-04-08 Sat 11:29]--[2023-04-08 Sat 15:59] =>  4:30
 CLOCK: [2023-04-08 Sat 01:06]--[2023-04-08 Sat 01:30] =>  0:24
@@ -1521,6 +1563,14 @@ class Database(ABC):
     def get_station(self, station_id):
         return NotImplemented
 
+    @abstractmethod
+    def get_station_with_departures_and_arrivals(self, station_id):
+        return NotImplemented
+
+StationRecordPlus = namedtuple(
+    'StationRecordPlus',
+    'fid,english_name,finnish_address,returns,departures,x,y',
+)
 
 class PostgreDB(Database):
     # postgre db contains an index (id)
@@ -1579,6 +1629,38 @@ class PostgreDB(Database):
             value = cursor.fetchone()
         return StationRecord._make(value)
 
+    def get_station_with_departures_and_arrivals(self, station_id):
+        SQL = """
+WITH station AS (
+     SELECT *
+     FROM station
+     WHERE fid = %s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+    ) as departures,
+    (
+        SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+    ) as returns
+)
+SELECT station.fid, station.english_name, station.finnish_address, statistics.returns, statistics.departures, station.x, station.y
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (station_id,))
+            value = cursor.fetchone()
+        return StationRecordPlus._make(value)
 
 @app.route('/journeys')
 def journeys():
@@ -1634,7 +1716,7 @@ def station(station_id):
         os.environ['PSQL_HOST'],
         os.environ['PSQL_PORT']
     )
-    station = db.get_station(station_id)
+    station = db.get_station_with_departures_and_arrivals(station_id)
     return render_template(
         'station.html.j2',
         station=station,
@@ -1844,42 +1926,67 @@ if __name__ == "__main__":
 
 #+header: :tangle hcbf/templates/station.html.j2
 #+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-  </head>
-  <body>
-    <div style="display:flex; flex-flow: row wrap">
-      <div
-      <table>
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Address</th>
-            <th># of journeys starting here</th>
-            <th># of journeys ending here</th>
-        </thead>
-        <tbody>
-          <tr>
-            <td>{{ station.english_name }}</td>
-            <td>{{ station.finnish_address }} </td>
-            <td>{{ journeys_from_here }}</td>
-            <td>{{ journeys_to_here }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div id="osm-map"></div>
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12 col-md-6">
+        <div class="row">
+          <div class="col">
+            <h3>Station</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.english_name }}</td>
+                  <td>{{ station.finnish_address }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Details</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Journeys started here</th>
+                  <th>Journeys ended here</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.departures }}</td>
+                  <td>{{ station.returns }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div id="osm-map"></div>
+      </div>
     </div>
-    <script>
-      x = {{ station.x }}
-      y = {{ station.y }}
-    </script>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
-    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
-    <script src="{{ url_for('static', filename="osm.js") }}"></script>
-  </body>
-</html>
+  </div>
+{% endblock content %}
+
+{% block body_plus %}
+  <script>
+    x = {{ station.x }}
+    y = {{ station.y }}
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+  <script src="{{ url_for('static', filename="osm.js") }}"></script>
+{% endblock body_plus %}
 #+end_src
 
 #+header: :tangle hcbf/static/osm.js
@@ -1888,7 +1995,7 @@ if __name__ == "__main__":
 var element = document.getElementById('osm-map');
 
 // Height has to be set. You can do this in CSS too.
-element.style = 'height:100vh;width:300px';
+element.style = 'height:min(400px);'
 
 // Create Leaflet map on map element.
 var map = L.map(element);
