@@ -1573,6 +1573,16 @@ class PostgreDB(Database):
             values = cursor.fetchall()
         return [StationRecord._make(value) for value in values]
 
+    def get_station(self, station_id):
+        SQL = """
+        SELECT * from station
+        WHERE fid = %s
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (station_id,))
+            value = cursor.fetchone()
+        return StationRecord._make(value)
+
 @app.route('/journeys')
 def journeys():
     page_size = 20
@@ -1616,6 +1626,23 @@ def stations():
         previous_page=previous_page,
         page=page,
         next_page=next_page
+    )
+
+@app.route('/station/<station_id>')
+def station(station_id):
+    db = PostgreDB(
+        os.environ['PSQL_DB'],
+        os.environ['PSQL_USER'],
+        os.environ['PSQL_PASS'],
+        os.environ['PSQL_HOST'],
+        os.environ['PSQL_PORT']
+    )
+    station = db.get_station(station_id)
+    return render_template(
+        'station.html.j2',
+        station=station,
+        journeys_from_here='Not Implemented',
+        journeys_to_here='Not Implemented'
     )
 
 if __name__ == "__main__":
@@ -1709,6 +1736,70 @@ if __name__ == "__main__":
     </div>
   </body>
 </html>
+#+end_src
+
+#+header: :tangle hcbf/templates/station.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html>
+  <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+  </head>
+  <body>
+    <div style="display:flex; flex-flow: row wrap">
+      <div
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th># of journeys starting here</th>
+            <th># of journeys ending here</th>
+        </thead>
+        <tbody>
+          <tr>
+            <td>{{ station.english_name }}</td>
+            <td>{{ station.finnish_address }} </td>
+            <td>{{ journeys_from_here }}</td>
+            <td>{{ journeys_to_here }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div id="osm-map"></div>
+    </div>
+    <script>
+      x = {{ station.x }}
+      y = {{ station.y }}
+    </script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
+    <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+    <script src="{{ url_for('static', filename="osm.js") }}"></script>
+  </body>
+</html>
+#+end_src
+
+#+header: :tangle hcbf/static/osm.js
+#+begin_src js
+// Where you want to render the map.
+var element = document.getElementById('osm-map');
+
+// Height has to be set. You can do this in CSS too.
+element.style = 'height:100vh;width:300px';
+
+// Create Leaflet map on map element.
+var map = L.map(element);
+
+// Add OSM tile layer to the Leaflet map.
+L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+var target = L.latLng(y, x);
+
+map.setView(target, 13);
+
+L.marker(target)
+  .addTo(map);
 #+end_src
 
 #+header: :tangle hcbf/static/style.css
