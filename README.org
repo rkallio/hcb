@@ -40,6 +40,8 @@
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
+    - [[#journeys-csvs][Journeys CSVs]]
+    - [[#station-csv][Station CSV]]
   - [[#write-the-frontend][Write the frontend]]
   - [[#mock-up-journeys-list-view][Mock up journeys list view]]
   - [[#explore-hosting-options-on-google-cloud][Explore hosting options on google cloud]]
@@ -481,6 +483,7 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :ID:       8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A
 :END:
 :LOGBOOK:
+CLOCK: [2023-04-07 Fri 20:40]--[2023-04-07 Fri 21:00] =>  0:20
 CLOCK: [2023-04-07 Fri 19:44]--[2023-04-07 Fri 19:46] =>  0:02
 CLOCK: [2023-04-07 Fri 15:58]--[2023-04-07 Fri 18:51] =>  1:38
 CLOCK: [2023-04-02 Sun 09:38]--[2023-04-02 Sun 10:05] =>  0:27
@@ -489,6 +492,10 @@ CLOCK: [2023-04-01 Sat 22:29]--[2023-04-01 Sat 22:38] =>  0:09
 CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
 :END:
 
+*** Journeys CSVs
+:LOGBOOK:
+CLOCK: [2023-04-08 Sat 00:58]--[2023-04-08 Sat 01:05] =>  0:07
+:END:
 The journey dataset consists of three files, one file for the data of one month.
 
 CSV header defines the following fields:
@@ -891,8 +898,321 @@ ADD COLUMN id SERIAL PRIMARY KEY;
 
 How do I get this bad boy to Google SQL cheaply?
 
+Almost all lines in the original csv's contain dups.
+
+Here's a script that merges the files into one and deletes all dups.
+
+#+header: :dir ../dataset
+#+begin_src bash
+cat <(tail +2 2021-05.csv) \
+    <(tail +2 2021-06.csv) \
+    <(tail +2 2021-07.csv) \
+    | sort | uniq > journeys.csv
+#+end_src
+
+#+header: :dir ../dataset
+#+begin_src sh
+wc -l 2021-0?.csv journeys.csv
+#+end_src
+
+#+RESULTS:
+|  814677 | 2021-05.csv  |
+| 1223483 | 2021-06.csv  |
+| 1208845 | 2021-07.csv  |
+| 1623501 | journeys.csv |
+| 4870506 | total        |
+
+*** Station CSV
+:LOGBOOK:
+CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
+:END:
+
+Here's a parser for the station CSV.
+
+#+name: StationTypes
+#+begin_src python
+from collections import namedtuple
+
+StationRecord = namedtuple(
+    'StationRecord',
+    'fid,id,finnish_name,swedish_name,english_name,finnish_address,swedish_address,finnish_city,swedish_city,operator,capacity,x,y')
+
+class Station:
+    def __init__(
+            self,
+            fid,
+            id,
+            finnish_name,
+            swedish_name,
+            english_name,
+            finnish_address,
+            swedish_address,
+            finnish_city,
+            swedish_city,
+            operator,
+            capacity,
+            x,
+            y
+    ):
+        self.fid = fid
+        self.id = id
+        self.finnish_name = finnish_name
+        self.swedish_name = swedish_name
+        self.english_name = english_name
+        self.finnish_address = finnish_address
+        self.swedish_address = swedish_address
+        self.finnish_city = finnish_city
+        self.swedish_city = swedish_city
+        self.operator = operator
+        self.capacity = capacity
+        self.x = x
+        self.y = y
+
+    @staticmethod
+    def from_station_record(record):
+        return Station(
+            record.fid,
+            record.id,
+            record.finnish_name,
+            record.swedish_name,
+            record.english_name,
+            record.finnish_address,
+            record.swedish_address,
+            record.finnish_city,
+            record.swedish_city,
+            record.operator,
+            record.capacity,
+            record.x,
+            record.y
+        )
+
+    def __repr__(self):
+        return (
+            'Station('
+            f'{str(self.fid)!r}, '
+            f'{self.id!r}, '
+            f'{self.finnish_name!r}, '
+            f'{self.swedish_name!r}, '
+            f'{self.english_name!r}, '
+            f'{self.finnish_address!r}, '
+            f'{self.swedish_address!r}, '
+            f'{self.finnish_city!r},'
+            f'{self.swedish_city!r},'
+            f'{self.operator!r},'
+            f'{str(self.capacity)!r},'
+            f'{str(self.x)!r},'
+            f'{str(self.y)!r}'
+            ')'
+        )
+
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self, y):
+        if isinstance(y, str):
+            y = float(y)
+
+        if not isinstance(y, float):
+            raise ValueError()
+        self._y = y
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter
+    def x(self, x):
+        if isinstance(x, str):
+            x = float(x)
+
+        if not isinstance(x, float):
+            raise ValueError()
+        self._x = x
+
+    @property
+    def capacity(self):
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, capacity):
+        if isinstance(capacity, str):
+            capacity = int(capacity)
+
+        if not isinstance(capacity, int):
+            raise ValueError()
+        self._capacity = capacity
+
+    @property
+    def operator(self):
+        return self._operator
+
+    @operator.setter
+    def operator(self, operator):
+        if not isinstance(operator, str):
+            raise ValueError()
+        self._operator = operator
+
+    @property
+    def swedish_address(self):
+        return self._swedish_address
+
+    @swedish_address.setter
+    def swedish_address(self, swedish_address):
+        if not isinstance(swedish_address, str):
+            raise ValueError()
+        self._swedish_address = swedish_address
+
+    @property
+    def finnish_address(self):
+        return self._finnish_address
+
+    @finnish_address.setter
+    def finnish_address(self, finnish_address):
+        if not isinstance(finnish_address, str):
+            raise ValueError()
+        self._finnish_address = finnish_address
+
+    @property
+    def english_name(self):
+        return self._english_name
+
+    @english_name.setter
+    def english_name(self, english_name):
+        if not isinstance(english_name, str):
+            raise ValueError()
+        self._english_name = english_name
+
+    @property
+    def swedish_name(self):
+        return self._swedish_name
+
+    @swedish_name.setter
+    def swedish_name(self, swedish_name):
+        if not isinstance(swedish_name, str):
+            raise ValueError()
+        self._swedish_name = swedish_name
+
+    @property
+    def finnish_name(self):
+        return self._finnish_name
+
+    @finnish_name.setter
+    def finnish_name(self, finnish_name):
+        if not isinstance(finnish_name, str):
+            raise ValueError()
+        self._finnish_name = finnish_name
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if not isinstance(id, str):
+            raise ValueError()
+        self._id = id
+
+    @property
+    def fid(self):
+        return self._fid
+
+    @fid.setter
+    def fid(self, fid):
+        if isinstance(fid, str):
+            fid = int(fid)
+        if not isinstance(fid, int):
+            raise ValueError()
+        self._fid = fid
+#+end_src
+
+#+RESULTS: StationTypes
+
+
+Here's how I pushed the stuff into psql.
+
+#+header: :tangle ../dataset/station-to-sql-requirements.txt
+#+begin_src text
+psycopg2-binary
+#+end_src
+
+#+header: :tangle ../dataset/station-to-sql.py
+#+header: :dir ../dataset/
+#+begin_src python
+import csv
+import pprint
+import traceback
+import psycopg2
+import os
+<<StationTypes>>
+
+file = 'asemat.csv'
+
+reader = csv.reader(open(file, 'r', newline=''))
+# skip header
+next(reader)
+stations = map(Station.from_station_record, map(StationRecord._make, reader))
+
+
+conn = psycopg2.connect(
+    database='hcb',
+    user=os.environ['PSQL_USER'],
+    password=os.environ['PSQL_PASS'],
+    host=os.environ['PSQL_HOST'],
+    port=os.environ['PSQL_PORT']
+)
+
+SQL = """
+CREATE TABLE IF NOT EXISTS station (
+  fid INTEGER PRIMARY KEY,
+  id TEXT,
+  finnish_name TEXT,
+  swedish_name TEXT,
+  english_name TEXT,
+  finnish_address TEXT,
+  swedish_address TEXT,
+  finnish_city TEXT,
+  swedish_city TEXT,
+  operator TEXT,
+  capacity INTEGER,
+  x FLOAT,
+  y FLOAT
+)
+"""
+
+cur = conn.cursor()
+cur.execute(SQL)
+
+SQL = "INSERT INTO station VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
+
+for station in stations:
+    cur.execute(SQL, (
+        station.fid,
+        station.id,
+        station.finnish_name,
+        station.swedish_name,
+        station.english_name,
+        station.finnish_address,
+        station.swedish_address,
+        station.finnish_city,
+        station.swedish_city,
+        station.operator,
+        station.capacity,
+        station.x,
+        station.y
+    ))
+
+conn.commit()
+conn.close()
+#+end_src
+
+#+RESULTS:
+
 ** Write the frontend
 :LOGBOOK:
+CLOCK: [2023-04-08 Sat 11:29]
+CLOCK: [2023-04-08 Sat 01:06]--[2023-04-08 Sat 01:30] =>  0:24
 CLOCK: [2023-04-07 Fri 20:04]--[2023-04-07 Fri 20:29] =>  0:25
 CLOCK: [2023-04-07 Fri 15:29]--[2023-04-07 Fri 15:40] =>  0:11
 CLOCK: [2023-04-07 Fri 14:29]--[2023-04-07 Fri 15:15] =>  0:46
