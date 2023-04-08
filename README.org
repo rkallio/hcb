@@ -494,6 +494,7 @@ CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
 
 *** Journeys CSVs
 :LOGBOOK:
+CLOCK: [2023-04-08 Sat 21:39]--[2023-04-08 Sat 22:36] =>  0:57
 CLOCK: [2023-04-08 Sat 00:58]--[2023-04-08 Sat 01:05] =>  0:07
 :END:
 The journey dataset consists of three files, one file for the data of one month.
@@ -1211,7 +1212,9 @@ conn.close()
 
 ** Write the frontend
 :LOGBOOK:
-CLOCK: [2023-04-08 Sat 11:29]
+CLOCK: [2023-04-08 Sat 22:36]
+CLOCK: [2023-04-08 Sat 21:28]--[2023-04-08 Sat 21:39] =>  0:11
+CLOCK: [2023-04-08 Sat 11:29]--[2023-04-08 Sat 15:59] =>  4:30
 CLOCK: [2023-04-08 Sat 01:06]--[2023-04-08 Sat 01:30] =>  0:24
 CLOCK: [2023-04-07 Fri 20:04]--[2023-04-07 Fri 20:29] =>  0:25
 CLOCK: [2023-04-07 Fri 15:29]--[2023-04-07 Fri 15:40] =>  0:11
@@ -1510,21 +1513,14 @@ class Database(ABC):
     def get_journeys(self, offset, limit):
         return NotImplemented
 
-class SqliteDB(Database):
-    def __init__(self, connection_string):
-        self.connection_string = connection_string
-        self.connection = sqlite3.connect(connection_string)
+    @abstractmethod
+    def get_stations(self, offset, limit):
+        return NotImplemented
 
-    def get_journeys(self, page, page_size):
-        SQL = """
-        SELECT * FROM journey
-        LIMIT ?
-        OFFSET ?
-        """
-        offset = (page - 1) * page_size
-        response = self.connection.execute(SQL, (page_size, offset))
-        values = response.fetchall()
-        return [JourneyRecord._make(value) for value in values]
+    @abstractmethod
+    def get_station(self, station_id):
+        return NotImplemented
+
 
 class PostgreDB(Database):
     # postgre db contains an index (id)
@@ -1583,9 +1579,10 @@ class PostgreDB(Database):
             value = cursor.fetchone()
         return StationRecord._make(value)
 
+
 @app.route('/journeys')
 def journeys():
-    page_size = 20
+    page_size = 10
     # page indexing starts at 1
     page = max(1, int(request.args.get('page', '1')))
     pgdb = PostgreDB(
@@ -1608,7 +1605,7 @@ def journeys():
 
 @app.route('/stations')
 def stations():
-    page_size = 20
+    page_size = 10
     page = max(1, int(request.args.get('page', '1')))
     db = PostgreDB(
         os.environ['PSQL_DB'],
@@ -1641,101 +1638,208 @@ def station(station_id):
     return render_template(
         'station.html.j2',
         station=station,
-        journeys_from_here='Not Implemented',
-        journeys_to_here='Not Implemented'
     )
 
+@app.route('/')
+def home():
+    return render_template('home.html.j2')
+
 if __name__ == "__main__":
-    app.run(host='127.0.0.1', port=8080, debug=True)
+    app.run(host='0.0.0.0', port=8082, debug=True)
+#+end_src
+
+#+header: :tangle hcbf/templates/base.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block css_plus %}
+    {% endblock css_plus %}
+    <title>
+      {% block title %}
+        Helsinki city bikes
+      {% endblock title %}
+    </title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+  </head>
+  <body>
+    {% block navbar %}
+      <nav class="navbar navbar-expand-lg bg-light">
+        <div class="container-fluid">
+          <a class="navbar-brand" href="#">Helsinki City Bikes</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('home') }}">Home</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    {% endblock navbar %}
+    {% block content %}
+      <p>Implement the content block</p>
+    {% endblock content %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+
+    {% block body_plus %}
+    {% endblock body_plus %}
+  </body>
+</html>
+#+end_src
+
+#+header: :tangle hcbf/templates/home.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
 #+end_src
 
 #+header: :tangle hcbf/templates/journeys.html.j2
 #+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Helsinki city bike journeys</h1>
-    <table>
-      <thead>
-        <tr>
-          <th>Departure station</th>
-          <th>Return station</th>
-          <th>Covered distance (m)</th>
-          <th>Duration (s)</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for journey in journeys %}
-          <tr>
-            <td>{{ journey.departure_name }}</td>
-            <td>{{ journey.return_name }}</td>
-            <td>{{ journey.distance }}</td>
-            <td>{{ journey.duration }}</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="pager">
-      {% if previous_page is not none %}
-        <a href="{{ url_for('journeys', page=previous_page) }}">Previous</a>
-      {% endif %}
-      {{ page }}
-      <a href="{{ url_for('journeys', page=next_page) }}">Next</a>
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Journeys</h1>
+      </div>
     </div>
-  </body>
-</html>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Departure station</th>
+                <th>Return station</th>
+                <th>Covered distance (m)</th>
+                <th>Duration (s)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for journey in journeys %}
+                <tr>
+                  <td>{{ journey.departure_name }}</td>
+                  <td>{{ journey.return_name }}</td>
+                  <td>{{ journey.distance }}</td>
+                  <td>{{ journey.duration }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('journeys', page=previous_page) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item active">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('journeys', page=next_page) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
 #+end_src
 
 #+header: :tangle hcbf/templates/stations.html.j2
 #+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Helsinki city bike stations</h1>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Address</th>
-          <th>City</th>
-          <th>Operator</th>
-          <th>Capacity</th>
-          <th>More</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for station in stations %}
-          <tr>
-            <td>{{ station.english_name }}</td>
-            <td>{{ station.finnish_address }}</td>
-            <td>{{ station.finnish_city }}</td>
-            <td>{{ station.operator }}</td>
-            <td>{{ station.capacity }}</td>
-            <td>
-              <a
-                href="{{ url_for('station', station_id=station.fid) }}">
-                See
-              </a>
-            </td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    <div class="pager">
-      {% if previous_page is not none %}
-        <a href="{{ url_for('stations', page=previous_page) }}">Previous</a>
-      {% endif %}
-      {{ page }}
-      <a href="{{ url_for('stations', page=next_page) }}">Next</a>
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Stations</h1>
+      </div>
     </div>
-  </body>
-</html>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Address</th>
+                <th>See</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for station in stations %}
+                <tr>
+                  <td>{{ station.english_name }}</td>
+                  <td>{{ station.finnish_address }}</td>
+                  <td>
+                    <a
+                      href="{{ url_for('station', station_id=station.fid) }}">
+                      Map
+                    </a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('stations', page=previous_page) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item active">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('stations', page=next_page) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
 #+end_src
 
 #+header: :tangle hcbf/templates/station.html.j2
