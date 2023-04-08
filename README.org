@@ -1233,6 +1233,10 @@ Converted the frontend from pyramid to flask.
 
 Added support for pgsql data source.
 
+Implemented the stations view.
+
+Added pagination to stations view.
+
 ** Mock up journeys list view
 :LOGBOOK:
 CLOCK: [2023-04-06 Thu 12:09]--[2023-04-06 Thu 12:19] =>  0:10
@@ -1497,6 +1501,7 @@ import os
 from journey import JourneyRecord
 from abc import ABC, abstractmethod
 from collections import namedtuple
+from station import StationRecord
 
 app = Flask(__name__)
 
@@ -1555,12 +1560,24 @@ class PostgreDB(Database):
             values = cursor.fetchall()
         return [PostgreDB.JourneyRecord._make(value) for value in values]
 
+    def get_stations(self, page, page_size):
+        SQL = """
+        SELECT * FROM station
+        ORDER BY fid ASC
+        LIMIT %s
+        OFFSET %s
+        """
+        offset = (page - 1) * page_size
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (page_size, offset))
+            values = cursor.fetchall()
+        return [StationRecord._make(value) for value in values]
+
 @app.route('/journeys')
 def journeys():
     page_size = 20
     # page indexing starts at 1
     page = max(1, int(request.args.get('page', '1')))
-    db = SqliteDB(os.environ['SQLITE_DB'])
     pgdb = PostgreDB(
         os.environ['PSQL_DB'],
         os.environ['PSQL_USER'],
@@ -1572,11 +1589,33 @@ def journeys():
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
     return render_template(
-        'journeys.html.j2',
+       'journeys.html.j2',
         journeys=journeys,
         previous_page = previous_page,
         page = page,
         next_page = next_page
+    )
+
+@app.route('/stations')
+def stations():
+    page_size = 20
+    page = max(1, int(request.args.get('page', '1')))
+    db = PostgreDB(
+        os.environ['PSQL_DB'],
+        os.environ['PSQL_USER'],
+        os.environ['PSQL_PASS'],
+        os.environ['PSQL_HOST'],
+        os.environ['PSQL_PORT']
+    )
+    stations = db.get_stations(page, page_size)
+    previous_page = None if page == 1 else page - 1
+    next_page = page + 1
+    return render_template(
+        'stations.html.j2',
+        stations=stations,
+        previous_page=previous_page,
+        page=page,
+        next_page=next_page
     )
 
 if __name__ == "__main__":
@@ -1623,6 +1662,55 @@ if __name__ == "__main__":
 </html>
 #+end_src
 
+#+header: :tangle hcbf/templates/stations.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html>
+  <head>
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  </head>
+  <body>
+    <h1>Helsinki city bike stations</h1>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Address</th>
+          <th>City</th>
+          <th>Operator</th>
+          <th>Capacity</th>
+          <th>More</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for station in stations %}
+          <tr>
+            <td>{{ station.english_name }}</td>
+            <td>{{ station.finnish_address }}</td>
+            <td>{{ station.finnish_city }}</td>
+            <td>{{ station.operator }}</td>
+            <td>{{ station.capacity }}</td>
+            <td>
+              <a
+                href="{{ url_for('station', station_id=station.fid) }}">
+                See
+              </a>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="pager">
+      {% if previous_page is not none %}
+        <a href="{{ url_for('stations', page=previous_page) }}">Previous</a>
+      {% endif %}
+      {{ page }}
+      <a href="{{ url_for('stations', page=next_page) }}">Next</a>
+    </div>
+  </body>
+</html>
+#+end_src
+
 #+header: :tangle hcbf/static/style.css
 #+begin_src css
 
@@ -1636,6 +1724,11 @@ We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8
 <<JourneyParser>>
 #+end_src
 
+#+header: :tangle hcbf/station.py
+#+header: :noweb yes
+#+begin_src python
+<<StationTypes>>
+#+end_src
 
 ** The backend
 
