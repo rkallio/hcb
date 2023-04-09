@@ -924,19 +924,179 @@ wc -l 2021-0?.csv journeys.csv
 | 4870506 | total        |
 
 
-We want to get the count of departures and returns associated with a station:
+*** We want statistics
+:PROPERTIES:
+:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:END:
 
-#+header: :engine postgres
-#+header: :database hcb
-#+header: :dbuser postgres
-#+header: :dbpassword postgres
-#+header: :dbhost localhost
-#+header: :dbport 5432
 #+begin_src sql
-WITH station AS (
-     SELECT *
+WITH our_station AS (
+     SELECT id
      FROM station
      WHERE fid = 1
+)
+SELECT COUNT(*) AS departures
+FROM journey
+JOIN our_station
+ON journey.departure_station_id = our_station.id;
+#+end_src
+
+#+RESULTS:
+| departures |
+|------------|
+|       4930 |
+
+#+begin_src sql
+SELECT COUNT(*) from journey
+WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7);
+#+end_src
+
+#+RESULTS:
+|   count |
+|---------|
+| 3247002 |
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 1
+)
+SELECT COUNT(*) AS returns
+FROM journey
+JOIN our_station
+ON journey.return_station_id = our_station.id;
+#+end_src
+
+#+RESULTS:
+| returns |
+|---------|
+|    5072 |
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 1
+)
+SELECT AVG(distance) as average_journey
+FROM journey
+JOIN our_station
+ON journey.departure_station_id = our_station.id;
+#+end_src
+
+#+RESULTS:
+|   average_journey |
+|-------------------|
+| 3655.007302231237 |
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 1
+)
+SELECT AVG(distance) as average_journey
+FROM journey
+JOIN our_station
+ON journey.return_station_id = our_station.id;
+#+end_src
+
+#+RESULTS:
+|    average_journey |
+|--------------------|
+| 3773.3036277602523 |
+
+#+begin_src sql
+WITH station AS (
+    SELECT *
+    FROM station
+    WHERE fid = 1
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT AVG(distance) as average_departure_distance
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+    ) as avg_departure_distance,
+    (
+        SELECT AVG(distance) as average_return_distance
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+    ) as avg_return_distance
+)
+SELECT avg_return_distance, avg_departure_distance
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+#+end_src
+
+#+RESULTS:
+| avg_return_distance | avg_departure_distance |
+|---------------------+------------------------|
+|  3773.3036277602523 |      3655.007302231237 |
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 1
+)
+SELECT return_station_id, return_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON journey.departure_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+GROUP BY return_station_name, journey.return_station_id
+ORDER BY count DESC
+LIMIT 5;
+#+end_src
+
+#+RESULTS:
+| return_station_id | return_station_name      | count |
+|-------------------+--------------------------+-------|
+|               401 | Koivusaari (M)           |   376 |
+|               501 | Hanasaari                |   292 |
+|               057 | Lauttasaaren ostoskeskus |   246 |
+|               055 | Puistokaari              |   224 |
+|               505 | Westendinasema           |   222 |
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 1
+)
+SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON return_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+GROUP BY departure_station_name, departure_station_id
+ORDER BY count DESC
+LIMIT 5;
+#+end_src
+
+#+RESULTS:
+| departure_station_id | departure_station_name | count |
+|----------------------+------------------------+-------|
+|                  401 | Koivusaari (M)         |   406 |
+|                  501 | Hanasaari              |   292 |
+|                  055 | Puistokaari            |   244 |
+|                  595 | Westendintie           |   214 |
+|                  030 | Itämerentori           |   192 |
+
+#+begin_src sql
+WITH station AS (
+    SELECT *
+    FROM station
+    WHERE fid = 1
 ),
 statistics AS (
     SELECT (
@@ -946,23 +1106,25 @@ statistics AS (
         FROM journey
         JOIN station
         ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
     ) as departures,
     ( SELECT COUNT(*)
         FROM journey
         JOIN station
         ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
     ) as returns
 )
-SELECT station.fid, station.english_name, station.finnish_address, returns, departures
+SELECT returns, departures
 FROM station
 JOIN statistics
 ON station.id = statistics.id;
 #+end_src
 
 #+RESULTS:
-| fid | english_name | finnish_address   | returns | departures |
-|-----+--------------+-------------------+---------+------------|
-|   1 | Hanasaari    | Hanasaarenranta 1 |    5072 |       4930 |
+| returns | departures |
+|---------+------------|
+|    1410 |       4930 |
 
 *** Station CSV
 :LOGBOOK:
