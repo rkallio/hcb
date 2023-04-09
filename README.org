@@ -165,7 +165,49 @@ If you don't implement pagination, use some hard-coded limit for the list length
 ***** Searching
 :PROPERTIES:
 :ID:       1A851198-298A-417B-9E16-091C0F722A69
+:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
 :END:
+
+
+#+begin_src sql
+\d+ station
+#+end_src
+
+#+RESULTS:
+| Table "public.station"                  |                  |           |          |         |          |             |              |             |
+|-----------------------------------------+------------------+-----------+----------+---------+----------+-------------+--------------+-------------|
+| Column                                  | Type             | Collation | Nullable | Default | Storage  | Compression | Stats target | Description |
+| fid                                     | integer          |           | not null |         | plain    |             |              |             |
+| id                                      | text             |           |          |         | extended |             |              |             |
+| finnish_name                            | text             |           |          |         | extended |             |              |             |
+| swedish_name                            | text             |           |          |         | extended |             |              |             |
+| english_name                            | text             |           |          |         | extended |             |              |             |
+| finnish_address                         | text             |           |          |         | extended |             |              |             |
+| swedish_address                         | text             |           |          |         | extended |             |              |             |
+| finnish_city                            | text             |           |          |         | extended |             |              |             |
+| swedish_city                            | text             |           |          |         | extended |             |              |             |
+| operator                                | text             |           |          |         | extended |             |              |             |
+| capacity                                | integer          |           |          |         | plain    |             |              |             |
+| x                                       | double precision |           |          |         | plain    |             |              |             |
+| y                                       | double precision |           |          |         | plain    |             |              |             |
+| Indexes:                                |                  |           |          |         |          |             |              |             |
+| "station_pkey" PRIMARY KEY, btree (fid) |                  |           |          |         |          |             |              |             |
+| Access method: heap                     |                  |           |          |         |          |             |              |             |
+
+#+begin_src sql
+SELECT english_name, finnish_address
+FROM station
+WHERE    english_name    ILIKE '%kannel%'
+      OR finnish_address ILIKE '%kannel%'
+LIMIT 10;
+#+end_src
+
+#+RESULTS:
+| english_name               | finnish_address |
+|----------------------------+-----------------|
+| Kannelmäen liikuntapuisto  | Kanneltie 12    |
+| Kannelmäki railway station | Sitratori 2     |
+
 
 *** Single station view
 :PROPERTIES:
@@ -922,7 +964,6 @@ wc -l 2021-0?.csv journeys.csv
 | 1208845 | 2021-07.csv  |
 | 1623501 | journeys.csv |
 | 4870506 | total        |
-
 
 *** We want statistics
 :PROPERTIES:
@@ -1787,16 +1828,20 @@ class PostgreDB(Database):
             values = cursor.fetchall()
         return [PostgreDB.JourneyRecord._make(value) for value in values]
 
-    def get_stations(self, page, page_size):
+    def get_stations(self, page, page_size, search_term):
         SQL = """
-        SELECT * FROM station
+        SELECT *
+        FROM station
+        WHERE    english_name ILIKE %s ESCAPE ''
+              OR finnish_address ILIKE %s ESCAPE ''
         ORDER BY fid ASC
         LIMIT %s
         OFFSET %s
         """
         offset = (page - 1) * page_size
+        search_term = f'%{search_term}%'
         with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (page_size, offset))
+            cursor.execute(SQL, (search_term, search_term, page_size, offset))
             values = cursor.fetchall()
         return [StationRecord._make(value) for value in values]
 
@@ -1966,6 +2011,7 @@ def journeys():
 def stations():
     page_size = 10
     page = max(1, int(request.args.get('page', '1')))
+    search_term = request.args.get('search', '')
     db = PostgreDB(
         os.environ['PSQL_DB'],
         os.environ['PSQL_USER'],
@@ -1973,7 +2019,7 @@ def stations():
         os.environ['PSQL_HOST'],
         os.environ['PSQL_PORT']
     )
-    stations = db.get_stations(page, page_size)
+    stations = db.get_stations(page, page_size, search_term)
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
     return render_template(
@@ -1981,7 +2027,8 @@ def stations():
         stations=stations,
         previous_page=previous_page,
         page=page,
-        next_page=next_page
+        next_page=next_page,
+        search_term=search_term
     )
 
 @app.route('/station/<station_id>')
@@ -2151,26 +2198,33 @@ if __name__ == "__main__":
     </div>
     <div class="row">
       <div class="col">
+        <form>
+          <div class="input-group">
+            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
         <div class="table-responsive">
           <table class="table table-striped table-hover">
             <thead>
               <tr>
                 <th>Name</th>
                 <th>Address</th>
-                <th>See</th>
               </tr>
             </thead>
             <tbody>
               {% for station in stations %}
                 <tr>
-                  <td>{{ station.english_name }}</td>
-                  <td>{{ station.finnish_address }}</td>
                   <td>
-                    <a
-                      href="{{ url_for('station', station_id=station.fid) }}">
-                      Map
+                    <a href="{{ url_for('station', station_id=station.fid) }}">
+                      {{ station.english_name }}
                     </a>
                   </td>
+                  <td>{{ station.finnish_address }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -2184,11 +2238,11 @@ if __name__ == "__main__":
           <li class="page-item">
             <a
               class="page-link"
-              href="{{ url_for('stations', page=previous_page) }}">
+              href="{{ url_for('stations', page=previous_page, search=search_term) }}">
               Previous
             </a>
           </li>
-          <li class="page-item active">
+          <li class="page-item">
             <a
               class="page-link"
               href="#">
@@ -2197,7 +2251,7 @@ if __name__ == "__main__":
           </li>
           <li class="page-item">
             <a class="page-link"
-               href="{{ url_for('stations', page=next_page) }}">
+               href="{{ url_for('stations', page=next_page, search=search_term) }}">
                Next
             </a>
           </li>
