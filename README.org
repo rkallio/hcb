@@ -1253,7 +1253,7 @@ conn.close()
 
 ** Write the frontend
 :LOGBOOK:
-CLOCK: [2023-04-08 Sat 23:02]
+CLOCK: [2023-04-08 Sat 23:02]--[2023-04-09 Sun 00:44] =>  1:42
 CLOCK: [2023-04-08 Sat 22:36]--[2023-04-08 Sat 23:02] =>  0:26
 CLOCK: [2023-04-08 Sat 21:28]--[2023-04-08 Sat 21:39] =>  0:11
 CLOCK: [2023-04-08 Sat 11:29]--[2023-04-08 Sat 15:59] =>  4:30
@@ -1564,13 +1564,29 @@ class Database(ABC):
         return NotImplemented
 
     @abstractmethod
-    def get_station_with_departures_and_arrivals(self, station_id):
+    def get_station(self, station_id):
+        return NotImplemented
+
+    @abstractmethod
+    def get_station_statistics(self, station_id):
         return NotImplemented
 
 StationRecordPlus = namedtuple(
     'StationRecordPlus',
     'fid,english_name,finnish_address,returns,departures,x,y',
 )
+
+from dataclasses import dataclass
+
+@dataclass
+class StationStatistics:
+    station_id: int
+    total_returns: int
+    total_departures: int
+    average_return_distance: float
+    average_departure_distance: float
+    top_departures: list
+    top_returns: list
 
 class PostgreDB(Database):
     # postgre db contains an index (id)
@@ -1629,12 +1645,29 @@ class PostgreDB(Database):
             value = cursor.fetchone()
         return StationRecord._make(value)
 
-    def get_station_with_departures_and_arrivals(self, station_id):
+    def get_station_statistics(self, station_id):
+        total_journeys = self._total_journeys_from_and_to_station(station_id)
+        avg_distances = self._avg_distances_from_and_to_station(station_id)
+        top_return_stations = self._top_return_stations(station_id)
+        top_departure_stations = self._top_departure_stations(station_id)
+        stats = StationStatistics(
+            station_id=station_id,
+            total_returns=total_journeys[0],
+            total_departures=total_journeys[1],
+            average_return_distance=avg_distances[0],
+            average_departure_distance=avg_distances[1],
+            top_departures=top_departure_stations,
+            top_returns=top_return_stations
+        )
+
+        return stats
+
+    def _total_journeys_from_and_to_station(self, station_id):
         SQL = """
 WITH station AS (
-     SELECT *
-     FROM station
-     WHERE fid = %s
+    SELECT *
+    FROM station
+    WHERE fid = %s
 ),
 statistics AS (
     SELECT (
@@ -1645,14 +1678,13 @@ statistics AS (
         JOIN station
         ON station.id = departure_station_id
     ) as departures,
-    (
-        SELECT COUNT(*)
+    ( SELECT COUNT(*)
         FROM journey
         JOIN station
         ON station.id = return_station_id
     ) as returns
 )
-SELECT station.fid, station.english_name, station.finnish_address, statistics.returns, statistics.departures, station.x, station.y
+SELECT returns, departures
 FROM station
 JOIN statistics
 ON station.id = statistics.id;
@@ -1660,7 +1692,85 @@ ON station.id = statistics.id;
         with self.connection.cursor() as cursor:
             cursor.execute(SQL, (station_id,))
             value = cursor.fetchone()
-        return StationRecordPlus._make(value)
+        return value
+
+    def _avg_distances_from_and_to_station(self, station_id):
+        SQL = """
+WITH station AS (
+    SELECT *
+    FROM station
+    WHERE fid = %s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT AVG(distance) as average_departure_distance
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+    ) as avg_departure_distance,
+    (
+        SELECT AVG(distance) as average_return_distance
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+    ) as avg_return_distance
+)
+SELECT avg_return_distance, avg_departure_distance
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (station_id,))
+            value = cursor.fetchone()
+        return value
+
+    def _top_return_stations(self, station_id):
+        SQL = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %s
+)
+SELECT return_station_id, return_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON journey.departure_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+GROUP BY return_station_name, journey.return_station_id
+ORDER BY count DESC
+LIMIT 5;
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (station_id,))
+            values = cursor.fetchall()
+        return values
+
+    def _top_departure_stations(self, station_id):
+        SQL = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %s
+)
+SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON return_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+GROUP BY departure_station_name, departure_station_id
+ORDER BY count DESC
+LIMIT 5;
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL, (station_id,))
+            values = cursor.fetchall()
+        return values
+
 
 @app.route('/journeys')
 def journeys():
@@ -1716,10 +1826,13 @@ def station(station_id):
         os.environ['PSQL_HOST'],
         os.environ['PSQL_PORT']
     )
-    station = db.get_station_with_departures_and_arrivals(station_id)
+    station = db.get_station(station_id)
+    statistics = db.get_station_statistics(station_id)
+    print(statistics)
     return render_template(
         'station.html.j2',
         station=station,
+        statistics=statistics
     )
 
 @app.route('/')
@@ -1963,9 +2076,63 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ station.departures }}</td>
-                  <td>{{ station.returns }}</td>
+                  <td>{{ statistics.total_departures }}</td>
+                  <td>{{ statistics.total_returns }}</td>
                 </tr>
+              </tbody>
+              <thead>
+                <tr>
+                  <th>Average journey from here (m)</th>
+                  <th>Average journey to here (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ statistics.average_departure_distance }}</td>
+                  <td>{{ statistics.average_return_distance }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top destinations</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in statistics.top_returns %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey[0]) }}">{{ journey[1] }}</a></td>
+                    <td>{{ journey[2] }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top origins</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in statistics.top_departures %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey[0]) }}">{{ journey[1] }}</a></td>
+                    <td>{{ journey[2] }}</td>
+                  </tr>
+                {% endfor %}
               </tbody>
             </table>
           </div>
@@ -1995,7 +2162,7 @@ if __name__ == "__main__":
 var element = document.getElementById('osm-map');
 
 // Height has to be set. You can do this in CSS too.
-element.style = 'height:min(400px);'
+element.style = 'height:max(100%, 400px);'
 
 // Create Leaflet map on map element.
 var map = L.map(element);
