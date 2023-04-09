@@ -1166,6 +1166,22 @@ ON station.id = statistics.id;
 |---------+------------|
 |    1410 |       4930 |
 
+*** A random station
+:PROPERTIES:
+:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:END:
+
+#+begin_src sql
+SELECT fid from station
+ORDER BY RANDOM()
+LIMIT 1;
+#+end_src
+
+#+RESULTS:
+| fid |
+|-----|
+| 344 |
+
 *** Station CSV
 :LOGBOOK:
 CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
@@ -1744,7 +1760,7 @@ psycopg2-binary
 
 #+header: :tangle hcbf/main.py
 #+begin_src python
-from flask import Flask, render_template, request
+from flask import Flask, render_template, request, redirect, url_for
 import psycopg2
 from psycopg2.extensions import AsIs
 import sqlite3
@@ -1865,6 +1881,17 @@ class PostgreDB(Database):
             cursor.execute(SQL, (station_id,))
             value = cursor.fetchone()
         return StationRecord._make(value)
+
+    def get_random_station_id(self):
+        SQL = """
+        SELECT fid from station
+        ORDER BY RANDOM()
+        LIMIT 1;
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(SQL)
+            fid = cursor.fetchone()[0]
+        return fid
 
     def get_station_statistics(self, station_id, months):
         total_journeys = self._total_journeys_from_and_to_station(station_id, months)
@@ -2070,6 +2097,18 @@ def station(station_id):
         months=months
     )
 
+@app.route('/random-station')
+def random_station():
+    db = PostgreDB(
+        os.environ['PSQL_DB'],
+        os.environ['PSQL_USER'],
+        os.environ['PSQL_PASS'],
+        os.environ['PSQL_HOST'],
+        os.environ['PSQL_PORT']
+    )
+    fid = db.get_random_station_id()
+    return redirect(url_for('station', station_id=fid))
+
 @app.route('/')
 def home():
     return render_template('home.html.j2')
@@ -2133,6 +2172,23 @@ if __name__ == "__main__":
 #+header: :tangle hcbf/templates/home.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <p class="lead mt-5">
+          Pick a table category from the top nav bar, or...
+        </p>
+      </div>
+    </div>
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}
 #+end_src
 
 #+header: :tangle hcbf/templates/journeys.html.j2
