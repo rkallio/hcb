@@ -1415,6 +1415,7 @@ conn.close()
 
 ** Write the frontend
 :LOGBOOK:
+CLOCK: [2023-04-09 Sun 14:49]
 CLOCK: [2023-04-08 Sat 23:02]--[2023-04-09 Sun 00:44] =>  1:42
 CLOCK: [2023-04-08 Sat 22:36]--[2023-04-08 Sat 23:02] =>  0:26
 CLOCK: [2023-04-08 Sat 21:28]--[2023-04-08 Sat 21:39] =>  0:11
@@ -1443,6 +1444,8 @@ Added support for pgsql data source.
 Implemented the stations view.
 
 Added pagination to stations view.
+
+Implemented filtering by month in single station view.
 
 ** Mock up journeys list view
 :LOGBOOK:
@@ -1807,11 +1810,11 @@ class PostgreDB(Database):
             value = cursor.fetchone()
         return StationRecord._make(value)
 
-    def get_station_statistics(self, station_id):
-        total_journeys = self._total_journeys_from_and_to_station(station_id)
-        avg_distances = self._avg_distances_from_and_to_station(station_id)
-        top_return_stations = self._top_return_stations(station_id)
-        top_departure_stations = self._top_departure_stations(station_id)
+    def get_station_statistics(self, station_id, months):
+        total_journeys = self._total_journeys_from_and_to_station(station_id, months)
+        avg_distances = self._avg_distances_from_and_to_station(station_id, months)
+        top_return_stations = self._top_return_stations(station_id, months)
+        top_departure_stations = self._top_departure_stations(station_id, months)
         stats = StationStatistics(
             station_id=station_id,
             total_returns=total_journeys[0],
@@ -1824,7 +1827,7 @@ class PostgreDB(Database):
 
         return stats
 
-    def _total_journeys_from_and_to_station(self, station_id):
+    def _total_journeys_from_and_to_station(self, station_id, months):
         SQL = """
 WITH station AS (
     SELECT *
@@ -1839,11 +1842,13 @@ statistics AS (
         FROM journey
         JOIN station
         ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %s
     ) as departures,
     ( SELECT COUNT(*)
         FROM journey
         JOIN station
         ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %s
     ) as returns
 )
 SELECT returns, departures
@@ -1852,11 +1857,11 @@ JOIN statistics
 ON station.id = statistics.id;
         """
         with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,))
+            cursor.execute(SQL, (station_id, months, months))
             value = cursor.fetchone()
         return value
 
-    def _avg_distances_from_and_to_station(self, station_id):
+    def _avg_distances_from_and_to_station(self, station_id, months):
         SQL = """
 WITH station AS (
     SELECT *
@@ -1871,14 +1876,14 @@ statistics AS (
         FROM journey
         JOIN station
         ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+        WHERE EXTRACT(MONTH FROM departure_time) IN %s
     ) as avg_departure_distance,
     (
         SELECT AVG(distance) as average_return_distance
         FROM journey
         JOIN station
         ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+        WHERE EXTRACT(MONTH FROM departure_time) IN %s
     ) as avg_return_distance
 )
 SELECT avg_return_distance, avg_departure_distance
@@ -1887,11 +1892,11 @@ JOIN statistics
 ON station.id = statistics.id;
         """
         with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,))
+            cursor.execute(SQL, (station_id,months,months))
             value = cursor.fetchone()
         return value
 
-    def _top_return_stations(self, station_id):
+    def _top_return_stations(self, station_id, months):
         SQL = """
 WITH our_station AS (
      SELECT id
@@ -1902,17 +1907,17 @@ SELECT return_station_id, return_station_name, COUNT(return_station_id)
 FROM journey
 JOIN our_station
 ON journey.departure_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+WHERE EXTRACT(MONTH FROM departure_time) IN %s
 GROUP BY return_station_name, journey.return_station_id
 ORDER BY count DESC
 LIMIT 5;
         """
         with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,))
+            cursor.execute(SQL, (station_id,months))
             values = cursor.fetchall()
         return values
 
-    def _top_departure_stations(self, station_id):
+    def _top_departure_stations(self, station_id, months):
         SQL = """
 WITH our_station AS (
      SELECT id
@@ -1923,13 +1928,13 @@ SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
 FROM journey
 JOIN our_station
 ON return_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+WHERE EXTRACT(MONTH FROM departure_time) IN %s
 GROUP BY departure_station_name, departure_station_id
 ORDER BY count DESC
 LIMIT 5;
         """
         with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,))
+            cursor.execute(SQL, (station_id,months))
             values = cursor.fetchall()
         return values
 
@@ -1981,6 +1986,10 @@ def stations():
 
 @app.route('/station/<station_id>')
 def station(station_id):
+    months = request.args.getlist('month')
+    if months == []:
+        months = ('5', '6', '7')
+    months = tuple(map(int, months))
     db = PostgreDB(
         os.environ['PSQL_DB'],
         os.environ['PSQL_USER'],
@@ -1989,12 +1998,12 @@ def station(station_id):
         os.environ['PSQL_PORT']
     )
     station = db.get_station(station_id)
-    statistics = db.get_station_statistics(station_id)
-    print(statistics)
+    statistics = db.get_station_statistics(station_id, months)
     return render_template(
         'station.html.j2',
         station=station,
-        statistics=statistics
+        statistics=statistics,
+        months=months
     )
 
 @app.route('/')
@@ -2228,7 +2237,32 @@ if __name__ == "__main__":
         </div>
         <div class="row">
           <div class="col">
-            <h3>Details</h3>
+            <div class="row">
+              <div class="col">
+                <h3>Details</h3>
+              </div>
+            </div>
+            <form>
+              <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
+                     {% if 5 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="may">May</label>
+
+              <input type="checkbox" class="btn-check" id="june" autocomplete="off" name="month" value="6"
+                     {% if 6 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="june">June</label>
+
+              <input type="checkbox" class="btn-check" id="july" autocomplete="off" name="month" value="7"
+                     {% if 7 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="july">July</label>
+
+              <button type="submit" class="btn btn-primary">Recompute</button>
+            </form>
             <table class="table">
               <thead>
                 <tr>
