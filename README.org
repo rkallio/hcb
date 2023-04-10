@@ -1624,24 +1624,73 @@ CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
 :header-args: :mkdirp yes :comments link
 :END:
 
-“The frontend” implements the [[id:3021535E-D457-4E21-B296-4035BCE2E439][journey list view]], the [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][station list view]], and the [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][single station view]].  Any features involving a viewable map will be offloaded to the [[id:30261BAC-BA61-4A98-AD03-ED6B8EFD3515][map frontend]].
+“The frontend” offers the following views:
++ [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
++ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station listing]]
++ [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
 
-The frontend will be implemented using Python with the [[https://trypyramid.com][Pyramid]] web application framework.  It *must* be served as a containerized application using Cloud run.
+It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
 
-See the list of requirements by importance:
+*** Installing
 
-+ [[id:1659CF90-34E8-4D6B-BBC8-B347089D2089][Must]]
-+ [[id:27D03FC8-96B7-4F0B-94C0-A1E027CBADB0][Should]]
-+ Could
-+ [[id:B1773244-DBCA-4154-92DB-54D718912754][Wish]]
+# TODO provide source code
+To be able to run “the frontend”, your site should have working Python interpreter.  You can download the sources for the front end once I make them available.
 
-*** Journey list view
+Make sure you are at the root directory of the front end application before running the following commands:
+
+**** Create a virtual environment in the root directory
+
+#+begin_src sh
+python -m venv env
+#+end_src
+
+**** Install Python package dependencies
+
+#+begin_src sh
+./env/bin/pip install -r requirements.txt
+#+end_src
+
+**** Run the front end
+
+The front end is dependent on some external resources.  Handles to those resources are communicated via environment variables.
+
+Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
+
+#+header: :tangle hcbf/sample.env
+#+begin_src sh
+PSQL_DB=hcb
+PSQL_USER=postgres
+PSQL_PASS=postgres
+PSQL_HOST=localhost
+PSQL_PORT=5432
+HCBF_HOST=127.0.0.1
+HCBF_PORT=8080
+#+end_src
+
+You can load the variables into your current shell session with the following commands:
+
+#+begin_src sh
+set -a
+source sample.env
+#+end_src
+
+*Note:* The app will crash sooner or later if one of the environment variables is not properly set.  This is a very convenient way to notify the user of a configuration error.
+
+After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
+
+#+begin_src sh
+./env/bin/python main.py
+#+end_src
+
+*** Package requirements
 
 #+header: :tangle hcbf/requirements.txt
-#+begin_src text
+#+begin_src python
 Flask
 psycopg2-binary
 #+end_src
+
+*** The application entrypoint (main.py)
 
 #+header: :tangle hcbf/main.py
 #+begin_src python
@@ -1699,7 +1748,7 @@ class PostgreDB(Database):
     # postgre db contains an index (id)
     JourneyRecord = namedtuple(
         'JourneyRecord',
-        'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration,id'
+        'id,departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration'
     )
 
     def __init__(self, database, user, password, host, port):
