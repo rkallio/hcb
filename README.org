@@ -2011,19 +2011,25 @@ def journeys():
         direction=direction
     )
 
+@dataclass
+class Station:
+    id: int
+    name: str
+    address: str
+
 @app.route('/stations')
 def stations():
-    page_size = 10
     page = max(1, int(request.args.get('page', '1')))
     search_term = request.args.get('search', '')
-    db = PostgreDB(
-        os.environ['PSQL_DB'],
-        os.environ['PSQL_USER'],
-        os.environ['PSQL_PASS'],
-        os.environ['PSQL_HOST'],
-        os.environ['PSQL_PORT']
-    )
-    stations = db.get_stations(page, page_size, search_term)
+
+    url = f'http://127.0.0.1:5433/stations?page={page}'
+
+    if search_term:
+        url = f'{url}&search={search_term}'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    stations = [Station(**station) for station in resp.json()]
+
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
     return render_template(
@@ -2323,11 +2329,11 @@ if __name__ == "__main__":
               {% for station in stations %}
                 <tr>
                   <td>
-                    <a href="{{ url_for('station', station_id=station.fid) }}">
-                      {{ station.finnish_name }}
+                    <a href="{{ url_for('station', station_id=station.id) }}">
+                      {{ station.name }}
                     </a>
                   </td>
-                  <td>{{ station.finnish_address }}</td>
+                  <td>{{ station.address }}</td>
                 </tr>
               {% endfor %}
             </tbody>
@@ -2630,6 +2636,71 @@ from psycopg2.extensions import AsIs
 from dataclasses import dataclass
 
 @dataclass
+class GetStationsObject:
+    id: int
+    name: str
+    address: str
+
+class GetStationsParams:
+    def __init__(self, *, page, page_size, search_term):
+        self.page = page
+        self.page_size = page_size
+        self.search_term = search_term
+
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, page):
+        if not isinstance(page, int):
+            raise TypeError('page must be an int')
+        if not page > 0:
+            raise ValueError('page must be ≥ 1')
+        self._page = page
+
+    @property
+    def page_size(self):
+        return self._page_size
+
+    @page_size.setter
+    def page_size(self, page_size):
+        if not isinstance(page_size, int):
+            raise TypeError('page_size must be an int')
+        if page_size > 50 or page_size < 5:
+            raise ValueError('page_size must be within [5, 50]')
+        self._page_size = page_size
+
+    @property
+    def search_term(self):
+        return self._search_term
+
+    @search_term.setter
+    def search_term(self, search_term):
+        if search_term is None:
+            search_term = ''
+        if not isinstance(search_term, str):
+            raise TypeError('search_term must be None or a str')
+        if len(search_term) > 50:
+            raise ValueError(
+                'search_term can not be longer than 50'
+            )
+        self._search_term = search_term
+
+    def sql_offset(self):
+        return (self.page - 1) * self.page_size
+
+    def sql_search_term(self):
+        return f'%{self.search_term}%'
+
+    def as_statement_params(self):
+        return {
+            'search_term': self.sql_search_term(),
+            'page_size': self.page_size,
+            'offset': self.sql_offset()
+        }
+
+@dataclass
 class GetJourneysObject:
     departure_station_id: int
     departure_station_name: str
@@ -2764,10 +2835,7 @@ class DB:
             port=self.port
         )
 
-    def get_journeys(
-            self,
-            params
-    ):
+    def get_journeys(self, params):
         if not isinstance(params, GetJourneysParams):
             raise TypeError('Expected a GetJourneysParams')
 
@@ -2797,6 +2865,25 @@ OFFSET %(offset)s
                 cursor.execute(sql, sql_params)
                 values = cursor.fetchall()
         return list(map(lambda value: GetJourneysObject(*value), values))
+
+    def get_stations(self, params):
+        if not isinstance(params, GetStationsParams):
+            raise TypeError('Expected a GetStationsParams')
+        sql = """
+SELECT fid, finnish_name, finnish_address
+FROM station
+WHERE finnish_name ILIKE %(search_term)s ESCAPE ''
+    OR finnish_address ILIKE %(search_term)s ESCAPE ''
+ORDER BY finnish_name, finnish_address, fid ASC
+LIMIT %(page_size)s
+OFFSET %(offset)s
+        """
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, sql_params)
+                values = cursor.fetchall()
+        return [GetStationsObject(*value) for value in values]
 #+end_src
 
 *** main.py
@@ -2805,7 +2892,7 @@ OFFSET %(offset)s
 #+begin_src python
 from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
-from db import DB, GetJourneysParams
+from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
 import os
 
 app = Flask(__name__)
@@ -2852,7 +2939,29 @@ class JourneyList(Resource):
         result = db.get_journeys(params)
         return result, 200
 
+station = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'address': fields.String
+}
+
+class StationList(Resource):
+    @marshal_with(station)
+    def get(self):
+        page = int(request.args.get('page', '1'))
+        page_size = int(request.args.get('page_size', '10'))
+        search_term = request.args.get('search')
+
+        params = GetStationsParams(
+            page=page,
+            page_size=page_size,
+            search_term=search_term
+        )
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        result = db.get_stations(params)
+        return result, 200
 api.add_resource(JourneyList, '/journeys')
+api.add_resource(StationList, '/stations')
 
 if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
