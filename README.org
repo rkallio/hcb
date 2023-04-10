@@ -1081,22 +1081,6 @@ FROM top_destinations
 JOIN station
 ON station.id = top_destinations.return_station_id
 ORDER BY count DESC;
-
--- SELECT return_station
-
--- WITH our_station AS (
---      SELECT id
---      FROM station
---      WHERE fid = 320
--- )
--- SELECT return_station_id, return_station_name, COUNT(return_station_id)
--- FROM journey
--- JOIN our_station
--- ON journey.departure_station_id = our_station.id
--- WHERE EXTRACT(MONTH FROM departure_time) IN (5,6,7)
--- GROUP BY return_station_name, journey.return_station_id
--- ORDER BY count DESC
--- LIMIT 5;
 #+end_src
 
 #+RESULTS:
@@ -2577,7 +2561,7 @@ if __name__ == "__main__":
 var element = document.getElementById('osm-map');
 
 // Height has to be set. You can do this in CSS too.
-element.style = 'height:max(100%, 400px);'
+element.style = 'height:600px;'
 
 // Create Leaflet map on map element.
 var map = L.map(element);
@@ -2672,7 +2656,6 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 #+begin_src sh
 ./env/bin/python main.py
 #+end_src
-
 
 *** Requirements
 
@@ -3013,15 +2996,22 @@ WITH our_station AS (
      SELECT id
      FROM station
      WHERE fid = %(id)s
+),
+top_destinations AS (
+     SELECT return_station_id, COUNT(*)
+     FROM journey
+     JOIN our_station
+     ON journey.departure_station_id = our_station.id
+     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+     GROUP BY return_station_id
+     ORDER BY count DESC
+     LIMIT 5
 )
-SELECT return_station_id, return_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-GROUP BY return_station_name, journey.return_station_id
+SELECT station.fid as id, station.finnish_name, count
+FROM top_destinations
+JOIN station
+ON station.id = top_destinations.return_station_id
 ORDER BY count DESC
-LIMIT 5;
         """
         cursor.execute(sql, params)
         return cursor.fetchall()
@@ -3032,15 +3022,22 @@ WITH our_station AS (
      SELECT id
      FROM station
      WHERE fid = %(id)s
+),
+top_destinations AS (
+     SELECT departure_station_id, COUNT(*)
+     FROM journey
+     JOIN our_station
+     ON journey.return_station_id = our_station.id
+     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+     GROUP BY departure_station_id
+     ORDER BY count DESC
+     LIMIT 5
 )
-SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON return_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-GROUP BY departure_station_name, departure_station_id
+SELECT station.fid as id, station.finnish_name, count
+FROM top_destinations
+JOIN station
+ON station.id = top_destinations.departure_station_id
 ORDER BY count DESC
-LIMIT 5;
         """
         cursor.execute(sql, params)
         return cursor.fetchall()
