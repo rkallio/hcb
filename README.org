@@ -2605,6 +2605,445 @@ CREATE TABLE  station (
 | CREATE TABLE |
 |--------------|
 
+** The data import
 :PROPERTIES:
-:ID:       30261BAC-BA61-4A98-AD03-ED6B8EFD3515
+:header-args:python: :mkdirp yes
 :END:
+
+“The data import” reads journey and station data from csv source files, performs some preprocessing and filtering, and dumps the result in to a PostgreSQL database instance.
+
+*** Stations
+
+#+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
+#+begin_src text
+requests
+psycopg2-binary
+#+end_src
+
+#+begin_src sh
+set -a
+source sample.env
+#+end_src
+
+#+header: :tangle hcbi/stations/sample.env :mkdirp yes
+#+begin_src sh
+HCBI_STATION_SOURCE='https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv'
+PSQL_DATABASE=hcb
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=127.0.0.1
+PSQL_PORT=5432
+#+end_src
+
+#+header: :tangle hcbi/stations/main.py :mkdirp yes
+#+begin_src python
+import os
+import requests
+from collections import namedtuple
+import csv
+import json
+import psycopg2
+
+def download_network_file(networkfile):
+    """Download a csv from the net, write to local site.
+
+    Return local file's path.
+
+    """
+
+    localpath = os.path.abspath(
+        os.path.join(
+            '.',
+            os.path.basename(networkfile)
+        )
+    )
+
+    if os.path.exists(localpath):
+        print(f'file {localpath} exists, not redownloading')
+    else:
+        print(f'downloading {networkfile}',
+              f'to {localpath}', sep='\n')
+
+        with open(localpath, 'w') as localfile:
+            response = requests.get(networkfile)
+            response.raise_for_status()
+            localfile.write(response.text)
+
+    return localpath
+
+StationTuple = namedtuple(
+    'StationTuple',
+    'fid,'
+    'id,'
+    'finnish_name,'
+    'swedish_name,'
+    'english_name,'
+    'finnish_address,'
+    'swedish_address,'
+    'finnish_city,'
+    'swedish_city,'
+    'operator,'
+    'capacity,'
+    'x,'
+    'y'
+)
+
+class Station:
+    def __init__(
+            self,
+            fid,
+            id,
+            finnish_name,
+            swedish_name,
+            english_name,
+            finnish_address,
+            swedish_address,
+            finnish_city,
+            swedish_city,
+            operator,
+            capacity,
+            x,
+            y
+    ):
+        self.fid = fid
+        self.id = id
+        self.finnish_name = finnish_name
+        self.swedish_name = swedish_name
+        self.english_name = english_name
+        self.finnish_address = finnish_address
+        self.swedish_address = swedish_address
+        self.finnish_city = finnish_city
+        self.swedish_city = swedish_city
+        self.operator = operator
+        self.capacity = capacity
+        self.x = x
+        self.y = y
+
+    @staticmethod
+    def from_dict(dct):
+        return Station(**dct)
+
+    def to_dict(self):
+        return {
+            'fid': self.fid,
+            'id': self.id,
+            'finnish_name': self.finnish_name,
+            'swedish_name': self.swedish_name,
+            'english_name': self.english_name,
+            'finnish_address': self.finnish_address,
+            'swedish_address': self.swedish_address,
+            'finnish_city': self.finnish_city,
+            'swedish_city': self.swedish_city,
+            'operator': self.operator,
+            'capacity': self.capacity,
+            'x': self.x,
+            'y': self.y
+        }
+
+    def __repr__(self):
+        return (
+            'Station('
+            f'{str(self.fid)!r}, '
+            f'{self.id!r}, '
+            f'{self.finnish_name!r}, '
+            f'{self.swedish_name!r}, '
+            f'{self.english_name!r}, '
+            f'{self.finnish_address!r}, '
+            f'{self.swedish_address!r}, '
+            f'{self.finnish_city!r},'
+            f'{self.swedish_city!r},'
+            f'{self.operator!r},'
+            f'{str(self.capacity)!r},'
+            f'{str(self.x)!r},'
+            f'{str(self.y)!r}'
+            ')'
+        )
+
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self, y):
+        if isinstance(y, str):
+            y = float(y)
+
+        if not isinstance(y, float):
+            raise TypeError('y must be a float')
+        self._y = y
+
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter
+    def x(self, x):
+        if isinstance(x, str):
+            x = float(x)
+
+        if not isinstance(x, float):
+            raise TypeError('x must be a float')
+        self._x = x
+
+    @property
+    def capacity(self):
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, capacity):
+        if isinstance(capacity, str):
+            capacity = int(capacity)
+
+        if not isinstance(capacity, int):
+            raise TypeError('capacity must be an int')
+        self._capacity = capacity
+
+    @property
+    def operator(self):
+        return self._operator
+
+    @operator.setter
+    def operator(self, operator):
+        if isinstance(operator, str):
+            operator = operator.strip()
+            if len(operator) == 0:
+                operator = None
+
+        if not (operator is None
+                or isinstance(operator, str)):
+            raise TypeError('operator must be a str or None')
+        self._operator = operator
+
+
+    @property
+    def swedish_city(self):
+        return self._swedish_city
+
+    @swedish_city.setter
+    def swedish_city(self, swedish_city):
+        if isinstance(swedish_city, str):
+            swedish_city = swedish_city.strip()
+            if len(swedish_city) == 0:
+                swedish_city = None
+
+        if not (swedish_city is None
+                or isinstance(swedish_city, str)):
+            raise TypeError('swedish_city must be a str or None')
+        self._swedish_city = swedish_city
+
+
+    @property
+    def finnish_city(self):
+        return self._finnish_city
+
+    @finnish_city.setter
+    def finnish_city(self, finnish_city):
+        if isinstance(finnish_city, str):
+            finnish_city = finnish_city.strip()
+            if len(finnish_city) == 0:
+                finnish_city = None
+
+        if not (finnish_city is None
+                or isinstance(finnish_city, str)):
+            raise TypeError('finnish_city must be a str or None')
+        self._finnish_city = finnish_city
+
+    @property
+    def swedish_address(self):
+        return self._swedish_address
+
+    @swedish_address.setter
+    def swedish_address(self, swedish_address):
+        if isinstance(swedish_address, str):
+            swedish_address = swedish_address.strip()
+            if len(swedish_address) == 0:
+                swedish_address = None
+
+        if not (swedish_address is None
+                or isinstance(swedish_address, str)):
+            raise TypeError('swedish_address must be a str or None')
+        self._swedish_address = swedish_address
+
+
+    @property
+    def finnish_address(self):
+        return self._finnish_address
+
+    @finnish_address.setter
+    def finnish_address(self, finnish_address):
+        if isinstance(finnish_address, str):
+            finnish_address = finnish_address.strip()
+            if len(finnish_address) == 0:
+                finnish_address = None
+
+        if not (finnish_address is None
+                or isinstance(finnish_address, str)):
+            raise TypeError('finnish_address must be a str or None')
+        self._finnish_address = finnish_address
+
+    @property
+    def english_name(self):
+        return self._english_name
+
+    @english_name.setter
+    def english_name(self, english_name):
+        if isinstance(english_name, str):
+            english_name = english_name.strip()
+            if len(english_name) == 0:
+                english_name = None
+
+
+        if not (english_name is None
+                or isinstance(english_name, str)):
+            raise TypeError('english_name must be a str or None')
+        self._english_name = english_name
+
+    @property
+    def swedish_name(self):
+        return self._swedish_name
+
+    @swedish_name.setter
+    def swedish_name(self, swedish_name):
+        if isinstance(swedish_name, str):
+            swedish_name = swedish_name.strip()
+            if len(swedish_name) == 0:
+                swedish_name = None
+
+        if not (swedish_name is None
+                or isinstance(swedish_name, str)):
+            raise TypeError('swedish_name must be a str or None')
+        self._swedish_name = swedish_name
+
+    @property
+    def finnish_name(self):
+        return self._finnish_name
+
+    @finnish_name.setter
+    def finnish_name(self, finnish_name):
+        if isinstance(finnish_name, str):
+            finnish_name = finnish_name.strip()
+            if len(finnish_name) == 0:
+                finnish_name = None
+
+        if not (finnish_name is None
+                or isinstance(finnish_name, str)):
+            raise TypeError('finnish_name must be a str or None')
+        self._finnish_name = finnish_name
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if not isinstance(id, str):
+            raise TypeError('id must be a str')
+        self._id = id
+
+    @property
+    def fid(self):
+        return self._fid
+
+    @fid.setter
+    def fid(self, fid):
+        if isinstance(fid, str):
+            fid = int(fid)
+        if not isinstance(fid, int):
+            raise TypeError('fid must be an int')
+        self._fid = fid
+
+def parse_entries(filepath):
+    reader = csv.reader(open(filepath, newline=''))
+    # skip header
+    next(reader)
+    success, fail = [], []
+    for entry in reader:
+        tup = StationTuple._make(entry)
+        try:
+            success.append(Station(*tup).to_dict())
+        except Exception as e:
+            fail.append({ 'error': str(e), 'entry': entry })
+    return success, fail
+
+def download_and_filter(networkfile):
+    """Download and process station data into a json file.
+
+    Download the network files to site.  Return a filepath containing
+    downloaded data.
+
+    """
+
+    resultpath = os.path.abspath(
+        os.path.join('.', 'stations.json')
+    )
+
+    if os.path.exists(resultpath):
+        print(f'{resultpath} exists, not redownloading')
+        return resultpath
+    file = download_network_file(networkfile)
+    success, fails = parse_entries(file)
+    json.dump(success, open('stations.json', 'w'), indent=4)
+    json.dump(fails, open('bad-data.json', 'w'), indent=4)
+    return 'stations.json'
+
+
+def push_to_sql(stationpath):
+    with open(stationpath, 'r') as fp:
+        stations = [
+            Station.from_dict(dct) for dct in json.load(fp)
+        ]
+
+    connection = psycopg2.connect(
+        database=os.environ['PSQL_DATABASE'],
+        user=os.environ['PSQL_USERNAME'],
+        password=os.environ['PSQL_PASSWORD'],
+        host=os.environ['PSQL_HOST'],
+        port=os.environ['PSQL_PORT']
+    )
+
+    insert_statement = """
+INSERT INTO station (
+    fid,
+    id,
+    finnish_name,
+    swedish_name,
+    english_name,
+    finnish_address,
+    swedish_address,
+    finnish_city,
+    swedish_city,
+    operator,
+    capacity,
+    x,
+    y
+)
+VALUES (
+    %(fid)s,
+    %(id)s,
+    %(finnish_name)s,
+    %(swedish_name)s,
+    %(english_name)s,
+    %(finnish_address)s,
+    %(swedish_address)s,
+    %(finnish_city)s,
+    %(swedish_city)s,
+    %(operator)s,
+    %(capacity)s,
+    %(x)s,
+    %(y)s
+)
+    """
+    with connection.cursor() as cursor:
+        for station in stations:
+            dct = station.to_dict()
+            cursor.execute(insert_statement, dct)
+    connection.commit()
+    print('done')
+    connection.close()
+
+if __name__ == "__main__":
+    stationpath = download_and_filter(os.environ['HCBI_STATION_SOURCE'])
+    push_to_sql(stationpath)
+#+end_src
+
