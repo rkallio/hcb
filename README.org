@@ -3047,3 +3047,377 @@ if __name__ == "__main__":
     push_to_sql(stationpath)
 #+end_src
 
+*** Journeys
+
+Functional requirements for the data import are:
++ Don’t import journeys that lasted < 10 seconds
++ Don’t import journeys that covered < 10 meters
+
+Here are some additional requirements I defined for the import process:
++ Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
+  + longer than 600 minutes
+  + longer than 150 kilometers
++ Almost all journeys were duplicated in the CSV’s.  Delete any duplicates.
+
+#+header: :tangle hcbi/journeys/requirements.txt :mkdirp yes
+#+begin_src text
+requests
+psycopg2-binary
+#+end_src
+
+# TODO tell more about me
+
+#+begin_src sh
+set -a
+source sample.env
+#+end_src
+
+#+header: :tangle hcbi/journeys/sample.env
+#+begin_src sh
+HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
+PSQL_DATABASE=hcb
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=127.0.0.1
+PSQL_PORT=5432
+#+end_src
+
+#+header: :tangle hcbi/journeys/main.py
+#+begin_src python
+import requests
+import os
+from io import StringIO
+import csv
+from collections import namedtuple
+from datetime import datetime
+import json
+import psycopg2
+
+def download_network_files(networkfiles):
+    """Downloads csv's from the net and writes to site's disk.
+
+    networkfiles is a list of network files.
+
+    Returns local file paths if successful.
+
+    """
+
+    paths = []
+    for networkpath in networkfiles:
+        localpath = os.path.abspath(
+            os.path.join(
+                '.',
+                os.path.basename(networkpath),
+            )
+        )
+
+        if os.path.exists(localpath):
+            print(f'file {localpath} exists, so not redownloading')
+        else:
+            print(f'Downloading: {networkpath}',
+                  f'to: {localpath}', sep='\n')
+
+            with open(localpath, 'w') as localfile:
+                response = requests.get(networkpath)
+                response.raise_for_status()
+                localfile.write(response.text)
+        paths.append(localpath)
+    return paths
+
+def delete_dups(entries):
+    """Delete duplicates in a list of entries.
+
+    Returns a list containing only unique entries.
+
+    """
+    return list(set(entries))
+
+def merge_entries(filepaths):
+    """Merge entries from multiple csv filepaths into one.
+
+    Deletes a header line from each file.
+
+    """
+    entries = []
+    for path in filepaths:
+        with open(path, 'r') as fp:
+            next(fp)
+            for line in fp:
+                entries.append(line)
+    return entries
+
+JourneyTuple = namedtuple(
+        'JourneyTuple',
+        'departure_time,'
+        'return_time,'
+        'departure_station_id,'
+        'departure_station_name,'
+        'return_station_id,'
+        'return_station_name,'
+        'distance,'
+        'duration'
+    )
+
+class Journey:
+
+    def __init__(
+            self,
+            departure_time,
+            return_time,
+            departure_station_id,
+            departure_station_name,
+            return_station_id,
+            return_station_name,
+            distance,
+            duration
+    ):
+        self.departure_time = departure_time
+        self.return_time = return_time
+        self.departure_station_id = departure_station_id
+        self.departure_station_name = departure_station_name
+        self.return_station_id = return_station_id
+        self.return_station_name = return_station_name
+        self.distance = distance
+        self.duration = duration
+
+    @property
+    def duration(self):
+        return self._duration
+
+    @duration.setter
+    def duration(self, duration):
+        if isinstance(duration, str):
+            duration = int(duration)
+        if not isinstance(duration, int):
+            raise TypeError('duration must be an int or str')
+        if duration < 10:
+            raise ValueError('duration must be ≥ 10 seconds')
+        # duration can't be longer than 6 hours
+        if duration > 60 * 60 * 6:
+            raise ValueError(
+                'duration must be shorter than 6 hours'
+            )
+        self._duration = duration
+
+    @property
+    def distance(self):
+        return self._distance
+
+    @distance.setter
+    def distance(self, distance):
+        if isinstance(distance, str):
+            distance = float(distance)
+        if not isinstance(distance, float):
+            raise TypeError('distance must be a float')
+        if distance < 10:
+            raise ValueError('distance must be ≥ 10 meters')
+        if distance > 150_000:
+            raise ValueError('distance must be ≤ 150km')
+        self._distance = distance
+
+    @property
+    def return_station_name(self):
+        return self._return_station_name
+
+    @return_station_name.setter
+    def return_station_name(self, return_station_name):
+        if not isinstance(return_station_name, str):
+            raise TypeError('return_station_name must be str')
+        self._return_station_name = return_station_name
+
+    @property
+    def return_station_id(self):
+        return self._return_station_id
+
+    @return_station_id.setter
+    def return_station_id(self, return_station_id):
+        # These may start with a leading 0
+        if not isinstance(return_station_id, str):
+            raise TypeError('return_station_id must be str')
+        self._return_station_id = return_station_id
+
+
+    @property
+    def departure_station_name(self):
+        return self._departure_station_name
+
+    @departure_station_name.setter
+    def departure_station_name(self, departure_station_name):
+        if not isinstance(departure_station_name, str):
+            raise TypeError(
+                'departure_station_name must be a str'
+            )
+        self._departure_station_name = departure_station_name
+
+    @property
+    def departure_station_id(self):
+        return self._departure_station_id
+
+    @departure_station_id.setter
+    def departure_station_id(self, departure_station_id):
+        if not isinstance(departure_station_id, str):
+            raise TypeError(
+                'departure_station_id must be a str'
+            )
+        self._departure_station_id = \
+            departure_station_id
+
+    @property
+    def return_time(self):
+        return self._return_time
+
+    @return_time.setter
+    def return_time(self, return_time):
+        if isinstance(return_time, str):
+            return_time = datetime.fromisoformat(return_time)
+        if not isinstance(return_time, datetime):
+            raise TypeError('return_time must be a str')
+        self._return_time = return_time
+
+    @property
+    def departure_time(self):
+        return self._departure_time
+
+    @departure_time.setter
+    def departure_time(self, departure_time):
+        if isinstance(departure_time, str):
+            departure_time = \
+                datetime.fromisoformat(departure_time)
+        if not isinstance(departure_time, datetime):
+            raise TypeError('departure_time must be a str')
+        self._departure_time = departure_time
+
+    def to_dict(self):
+        return {
+            'departure_time': str(self.departure_time),
+            'return_time': str(self.return_time),
+            'departure_station_id': self.departure_station_id,
+            'departure_station_name': \
+            self.departure_station_name,
+            'return_station_id': self.return_station_id,
+            'return_station_name': self.return_station_name,
+            'distance': self.distance,
+            'duration': self.duration
+        }
+
+    @staticmethod
+    def from_dict(dct):
+        return Journey(**dct)
+
+    def __repr__(self):
+        return (
+            'Journey('
+            f'{str(self.departure_time)!r}, '
+            f'{str(self.return_time)!r}, '
+            f'{self.departure_station_id!r}, '
+            f'{self.departure_station_name!r}, '
+            f'{self.return_station_id!r}, '
+            f'{self.return_station_name!r}, '
+            f'{self.distance!r}, '
+            f'{self.duration!r}'
+            ')'
+        )
+
+def parse_entries(entries):
+    """Parse a list of str entries in csv form.
+
+    Return a tuple of successfully parsed entries, and entries which failed
+    parsing.
+
+    """
+    success, fail = [], []
+    for entry in entries:
+        io = StringIO(entry)
+        reader = csv.reader(io)
+        value = JourneyTuple._make(next(reader))
+        try:
+            success.append(Journey(*value).to_dict())
+        except Exception as e:
+            fail.append({ 'error': str(e), 'entry': entry })
+    return success, fail
+
+def download_and_filter(networkfiles):
+    """Download and process network files.
+
+    Download network files to current site.  Remove any duplicate
+    entries.  Filter bad entries.  Write result to site.  Return the
+    filepath.
+
+    """
+
+    resultpath = os.path.abspath(
+        os.path.join('.', 'journeys.json'),
+    )
+    if os.path.exists(resultpath):
+        print(f'{resultpath} exists, not downloading network files')
+        return resultpath
+
+    files = download_network_files(networkfiles)
+    collection = merge_entries(files)
+    print(f'{len(collection)} entries')
+    uniq = delete_dups(collection)
+    print(f'{len(uniq)} unique entries')
+    success, fails = parse_entries(uniq)
+    print(f'{len(success)} parseable and validated entries')
+    json.dump(fails, open('bad-entries.json', 'w'), indent=4)
+    json.dump(success, open('journeys.json', mode='w'), indent=4)
+    return 'journeys.json'
+
+def push_to_sql(journeypath):
+    """Load journeys from journeypath.
+
+    Write journeys to a postgresql database.
+
+    """
+    with open(journeypath, 'r') as fp:
+        journeys = [
+            Journey.from_dict(dct) for dct in json.load(fp)
+        ]
+
+    connection = psycopg2.connect(
+        database=os.environ['PSQL_DATABASE'],
+        user=os.environ['PSQL_USERNAME'],
+        password=os.environ['PSQL_PASSWORD'],
+        host=os.environ['PSQL_HOST'],
+        port=os.environ['PSQL_PORT']
+    )
+
+    insert_statement = """
+INSERT INTO journey (
+    departure_time,
+    return_time,
+    departure_station_id,
+    departure_station_name,
+    return_station_id,
+    return_station_name,
+    distance,
+    duration
+)
+VALUES (
+    %(departure_time)s,
+    %(return_time)s,
+    %(departure_station_id)s,
+    %(departure_station_name)s,
+    %(return_station_id)s,
+    %(return_station_name)s,
+    %(distance)s,
+    %(duration)s
+)
+    """
+    with connection.cursor() as cursor:
+        for i, journey in enumerate(journeys):
+            dct = journey.to_dict()
+            cursor.execute(insert_statement, dct)
+            if i % 1000 == 0:
+                print(f'{i}/{len(journeys)}')
+    connection.commit()
+    print('done')
+    connection.close()
+
+
+if __name__ == "__main__":
+    journeypath = download_and_filter(os.environ['HCBI_SOURCE_FILES'].split(' '))
+    push_to_sql(journeypath)
+#+end_src
+
+#+RESULTS:
