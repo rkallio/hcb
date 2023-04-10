@@ -27,6 +27,7 @@
     - [[#journeys-csvs][Journeys CSVs]]
     - [[#we-want-statistics][We want statistics]]
     - [[#a-random-station][A random station]]
+    - [[#top-5-destinations][Top 5 destinations]]
     - [[#station-csv][Station CSV]]
   - [[#write-the-frontend][Write the frontend]]
   - [[#write-data-import][Write data import]]
@@ -1054,6 +1055,59 @@ LIMIT 1;
 |-----|
 | 344 |
 
+*** Top 5 destinations
+:PROPERTIES:
+:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:END:
+
+#+begin_src sql
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = 320
+),
+top_destinations AS (
+     SELECT return_station_id, COUNT(*)
+     FROM journey
+     JOIN our_station
+     ON journey.departure_station_id = our_station.id
+     WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
+     GROUP BY return_station_id
+     ORDER BY count DESC
+     LIMIT 5
+)
+SELECT station.fid as id, station.finnish_name, count
+FROM top_destinations
+JOIN station
+ON station.id = top_destinations.return_station_id
+ORDER BY count DESC;
+
+-- SELECT return_station
+
+-- WITH our_station AS (
+--      SELECT id
+--      FROM station
+--      WHERE fid = 320
+-- )
+-- SELECT return_station_id, return_station_name, COUNT(return_station_id)
+-- FROM journey
+-- JOIN our_station
+-- ON journey.departure_station_id = our_station.id
+-- WHERE EXTRACT(MONTH FROM departure_time) IN (5,6,7)
+-- GROUP BY return_station_name, journey.return_station_id
+-- ORDER BY count DESC
+-- LIMIT 5;
+#+end_src
+
+#+RESULTS:
+|  id | finnish_name         | count |
+|-----+----------------------+-------|
+| 322 | Herttoniemi (M)      |   378 |
+| 321 | Petter Wetterin tie  |   200 |
+| 320 | Abraham Wetterin tie |   165 |
+| 330 | Porolahden koulu     |   161 |
+| 332 | Tulisuontie          |    86 |
+
 *** Station CSV
 :LOGBOOK:
 CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
@@ -1383,6 +1437,8 @@ CLOCK: [2023-04-09 Sun 19:13]--[2023-04-09 Sun 23:13] =>  4:00
 
 ** Refactor into frontend & backend
 :LOGBOOK:
+CLOCK: [2023-04-10 Mon 23:22]--[2023-04-11 Tue 00:34] =>  1:12
+CLOCK: [2023-04-10 Mon 21:00]--[2023-04-10 Mon 23:00] =>  2:00
 CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
 :END:
 
