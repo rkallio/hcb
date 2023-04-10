@@ -2587,10 +2587,90 @@ We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8
 ** The backend
 
 ** The database
+:PROPERTIES:
+:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:END:
 
-** The datapump
+Here's our database definition.  You can either execute these statements in an SQL prompt or use the ready-made python program provided at X.  Instructions for the python program are below.
+# TODO add link to python program
 
-** The map frontend
+#+header: :tangle hcbdb/create-database-hcb.sql :mkdirp yes
+#+header: :database postgres
+#+begin_src sql
+CREATE DATABASE hcb;
+#+end_src
+
+#+RESULTS:
+| CREATE DATABASE |
+|-----------------|
+
+#+name: create-table-journey
+#+header: :tangle hcbdb/create-table-journey.sql :mkdirp yes
+#+begin_src sql
+BEGIN;
+
+CREATE TABLE journey (
+       id SERIAL PRIMARY KEY,
+       departure_time TIMESTAMP,
+       return_time TIMESTAMP,
+       departure_station_id TEXT,
+       departure_station_name TEXT,
+       return_station_id TEXT,
+       return_station_name TEXT,
+       distance FLOAT,
+       duration INTEGER
+);
+
+-- We need to sort on these columns
+CREATE INDEX distance_index
+ON journey(distance);
+
+CREATE INDEX duration_index
+ON journey(duration);
+
+CREATE INDEX departure_station_name_index
+ON journey(departure_station_name);
+
+CREATE INDEX return_station_name_index
+ON journey(return_station_name);
+
+COMMIT;
+#+end_src
+
+#+RESULTS: create-table-journey
+| BEGIN        |
+|--------------|
+| CREATE TABLE |
+| CREATE INDEX |
+| CREATE INDEX |
+| CREATE INDEX |
+| CREATE INDEX |
+| COMMIT       |
+
+#+name: create-table-station
+#+header: :tangle hcbdb/create-table-station.sql :mkdirp yes
+#+begin_src sql
+CREATE TABLE  station (
+       fid INTEGER PRIMARY KEY,
+       id TEXT,
+       finnish_name TEXT,
+       swedish_name TEXT,
+       english_name TEXT,
+       finnish_address TEXT,
+       swedish_address TEXT,
+       finnish_city TEXT,
+       swedish_city TEXT,
+       operator TEXT,
+       capacity INTEGER,
+       x FLOAT,
+       y FLOAT
+)
+#+end_src
+
+#+RESULTS: create-table-station
+| CREATE TABLE |
+|--------------|
+
 :PROPERTIES:
 :ID:       30261BAC-BA61-4A98-AD03-ED6B8EFD3515
 :END:
