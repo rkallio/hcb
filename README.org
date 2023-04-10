@@ -978,12 +978,14 @@ LIMIT 5;
 |               505 | Westendinasema           |   222 |
 
 #+begin_src sql
+\set fid 1
+
 WITH our_station AS (
      SELECT id
      FROM station
-     WHERE fid = 1
+     WHERE fid = :fid
 )
-SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
+SELECT departure_station_id, departure_station_name, COUNT(*)
 FROM journey
 JOIN our_station
 ON return_station_id = our_station.id
@@ -994,13 +996,13 @@ LIMIT 5;
 #+end_src
 
 #+RESULTS:
-| departure_station_id | departure_station_name | count |
-|----------------------+------------------------+-------|
-|                  401 | Koivusaari (M)         |   406 |
-|                  501 | Hanasaari              |   292 |
-|                  055 | Puistokaari            |   244 |
-|                  595 | Westendintie           |   214 |
-|                  030 | Itämerentori           |   192 |
+| departure_station_id | departure_station_name   | count |
+|----------------------+--------------------------+-------|
+|                  401 | Koivusaari (M)           |   200 |
+|                  055 | Puistokaari              |   121 |
+|                  595 | Westendintie             |   105 |
+|                  030 | Itämerentori             |    93 |
+|                  057 | Lauttasaaren ostoskeskus |    81 |
 
 #+begin_src sql
 WITH station AS (
@@ -1858,7 +1860,7 @@ class PostgreDB(Database):
     def _total_journeys_from_and_to_station(self, station_id, months):
         SQL = """
 WITH station AS (
-    SELECT *
+    SELECT id
     FROM station
     WHERE fid = %s
 ),
@@ -1892,7 +1894,7 @@ ON station.id = statistics.id;
     def _avg_distances_from_and_to_station(self, station_id, months):
         SQL = """
 WITH station AS (
-    SELECT *
+    SELECT id
     FROM station
     WHERE fid = %s
 ),
@@ -1992,9 +1994,7 @@ def journeys():
     if direction:
         url = f'{url}&direction={direction}'
 
-    resp = requests.get(
-        url
-    )
+    resp = requests.get(url)
 
     resp.raise_for_status()
 
@@ -2003,23 +2003,9 @@ def journeys():
     return render_template(
         'journeys.html.j2',
         journeys=journeys,
-        previous_page=page - 1,
+        previous_page=max(page - 1, 1),
         next_page=page + 1,
         page=page,
-        search_term=search_term,
-        order_by=order_by,
-        direction=direction
-    )
-
-    journeys = pgdb.get_journeys(page, page_size, search_term, order_by, direction)
-    previous_page = None if page == 1 else page - 1
-    next_page = page + 1
-    return render_template(
-       'journeys.html.j2',
-        journeys=journeys,
-        previous_page = previous_page,
-        page = page,
-        next_page = next_page,
         search_term=search_term,
         order_by=order_by,
         direction=direction
