@@ -40,6 +40,10 @@
     - [[#package-requirements][Package requirements]]
     - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
   - [[#the-backend][The backend]]
+    - [[#installing-1][Installing]]
+    - [[#requirements][Requirements]]
+    - [[#dbpy][db.py]]
+    - [[#mainpy][main.py]]
   - [[#the-database][The database]]
   - [[#the-data-import][The data import]]
     - [[#stations][Stations]]
@@ -2519,6 +2523,311 @@ We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8
 #+end_src
 
 ** The backend
+
+“The backend” is a facade for “The database”.  “A client” may interface with “the backend” via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the “client”.
+
+It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
+
+*** Installing
+
+# TODO provide source code
+To be able to run “the backend”, your site should have working Python interpreter.  You can download the sources for “the backend” once I make them available.
+
+Make sure you are at the root directory of “the backend” before running the following commands:
+
+**** Create a virtual environment
+
+#+header: :dir hcbb/
+#+begin_src sh
+python -m venv env
+#+end_src
+
+**** Install dependencies
+
+#+header: :dir hcbb/
+#+begin_src sh
+./env/bin/pip install -r requirements.txt
+#+end_src
+
+**** Run the app
+
+“The backend” is dependent on some external resources.  Handles to those resources are communicated via environment variables.
+
+Here’s a sample configuration file.  It is also provided as a part of “the backend” source as =sample.env=.
+
+#+header: :mkdirp yes :tangle hcbb/sample.env
+#+begin_src sh
+PSQL_DB=hcb
+PSQL_USER=postgres
+PSQL_PASS=postgres
+PSQL_HOST=localhost
+PSQL_PORT=5432
+HCBB_HOST=127.0.0.1
+HCBB_PORT=5433
+#+end_src
+
+You can load the variables into your current shell session with the following commands:
+
+#+begin_src sh
+set -a
+source sample.env
+#+end_src
+
+*Note:* The app will crash if one of the environment variables is not properly set.  This is a convenient way to notify the user of a configuration error.
+
+After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
+
+#+begin_src sh
+./env/bin/python main.py
+#+end_src
+
+
+*** Requirements
+
+#+header: :tangle hcbb/requirements.txt
+#+begin_src sh
+Flask
+flask_restful
+psycopg2-binary
+#+end_src
+
+*** db.py
+
+#+header: :tangle hcbb/db.py
+#+begin_src python
+import psycopg2
+from psycopg2.extensions import AsIs
+from dataclasses import dataclass
+
+@dataclass
+class GetJourneysObject:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
+
+class GetJourneysParams:
+    order_by_mapping = {
+        'departure_station': 'journey.departure_station_name',
+        'return_station': 'journey.return_station_name',
+        'distance': 'journey.distance',
+        'duration': 'journey.duration',
+        None: 'journey.id'
+    }
+
+    direction_mapping = {
+        'ascending': 'ASC',
+        'descending': 'DESC',
+        None: 'ASC'
+    }
+
+    def __init__(self, *, page, page_size, search_term, order_by, direction):
+        self.page = page
+        self.page_size = page_size
+        self.search_term = search_term
+        self.order_by = order_by
+        self.direction = direction
+
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, page):
+        if not isinstance(page, int):
+            raise TypeError('page must be an int')
+        if not page > 0:
+            raise ValueError('page must be ≥ 1')
+        self._page = page
+
+    @property
+    def page_size(self):
+        return self._page_size
+
+    @page_size.setter
+    def page_size(self, page_size):
+        if not isinstance(page_size, int):
+            raise TypeError('page_size must be an int')
+        if page_size > 50 or page_size < 5:
+            raise ValueError('page_size must be within [5, 50]')
+        self._page_size = page_size
+
+    @property
+    def search_term(self):
+        return self._search_term
+
+    @search_term.setter
+    def search_term(self, search_term):
+        if search_term is None:
+            search_term = ''
+        if not isinstance(search_term, str):
+            raise TypeError('search_term must be None or a str')
+        if len(search_term) > 50:
+            raise ValueError(
+                'search_term can not be longer than 50'
+            )
+        self._search_term = search_term
+
+    @property
+    def order_by(self):
+        return self._order_by
+
+    @order_by.setter
+    def order_by(self, order_by):
+        keys = GetJourneysParams.order_by_mapping.keys()
+        if order_by not in keys:
+            raise ValueError(f'order_by must be one of {keys}')
+        self._order_by = order_by
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @direction.setter
+    def direction(self, direction):
+        keys = GetJourneysParams.direction_mapping.keys()
+        if direction not in keys:
+            raise ValueError(f'direction must be one of {keys}')
+        self._direction = direction
+
+    def sql_offset(self):
+        return (self.page - 1) * self.page_size
+
+    def sql_search_term(self):
+        return f'%{self.search_term}%'
+
+    def sql_order_by(self):
+        return AsIs(
+            GetJourneysParams.order_by_mapping[self.order_by]
+        )
+
+    def sql_direction(self):
+        return AsIs(
+            GetJourneysParams.direction_mapping[self.direction]
+        )
+
+    def as_statement_params(self):
+        return {
+            'search_term': self.sql_search_term(),
+            'order_by_column': self.sql_order_by(),
+            'direction': self.sql_direction(),
+            'page_size': self.page_size,
+            'offset': self.sql_offset()
+        }
+
+class DB:
+    def __init__(self, database, user, password, host, port):
+        self.database = database
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+
+    def _connection(self):
+        return psycopg2.connect(
+            database=self.database,
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port
+        )
+
+    def get_journeys(
+            self,
+            params
+    ):
+        if not isinstance(params, GetJourneysParams):
+            raise TypeError('Expected a GetJourneysParams')
+
+        sql = """
+SELECT
+        departure_station.fid as departure_station_id,
+        departure_station_name,
+        return_station.fid as return_station_id,
+        return_station_name,
+        distance * 0.001,
+        duration / 60
+FROM journey
+JOIN station AS departure_station
+ON departure_station_id = departure_station.id
+JOIN station AS return_station
+ON return_station_id = return_station.id
+WHERE departure_station_name ILIKE %(search_term)s ESCAPE ''
+      OR return_station_name ILIKE %(search_term)s ESCAPE ''
+ORDER BY %(order_by_column)s %(direction)s, journey.id ASC
+LIMIT %(page_size)s
+OFFSET %(offset)s
+        """
+
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, sql_params)
+                values = cursor.fetchall()
+        return list(map(lambda value: GetJourneysObject(*value), values))
+#+end_src
+
+*** main.py
+
+#+header: :tangle hcbb/main.py
+#+begin_src python
+from flask import Flask, request
+from flask_restful import Api, Resource, fields, marshal_with
+from db import DB, GetJourneysParams
+import os
+
+app = Flask(__name__)
+api = Api(app)
+
+db_name = os.environ['PSQL_DB']
+db_user = os.environ['PSQL_USER']
+db_pass = os.environ['PSQL_PASS']
+db_host = os.environ['PSQL_HOST']
+db_port = os.environ['PSQL_PORT']
+host = os.environ['HCBB_HOST']
+port = os.environ['HCBB_PORT']
+
+fields = {
+    'departure_station_id': fields.Integer,
+    'departure_station_name': fields.String,
+    'return_station_id': fields.Integer,
+    'return_station_name': fields.String,
+    'distance': fields.Float,
+    'duration': fields.Integer
+}
+
+
+class JourneyList(Resource):
+
+    @marshal_with(fields)
+    def get(self):
+        page = int(request.args.get('page', '1'))
+        page_size = int(request.args.get('page_size', '10'))
+        search_term = request.args.get('search')
+        order_by = request.args.get('order_by')
+        direction = request.args.get('direction')
+
+        params = GetJourneysParams(
+            page=page,
+            page_size=page_size,
+            search_term=search_term,
+            order_by=order_by,
+            direction=direction
+        )
+
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+
+        result = db.get_journeys(params)
+        return result, 200
+
+api.add_resource(JourneyList, '/journeys')
+
+if __name__ == "__main__":
+    app.run(host=host, port=port, debug=True)
+#+end_src
+
 
 ** The database
 :PROPERTIES:
