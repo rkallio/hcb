@@ -2041,25 +2041,25 @@ def stations():
         search_term=search_term
     )
 
-@app.route('/station/<station_id>')
+@app.route('/station/<int:station_id>')
 def station(station_id):
     months = request.args.getlist('month')
     if months == []:
         months = ('5', '6', '7')
+
     months = tuple(map(int, months))
-    db = PostgreDB(
-        os.environ['PSQL_DB'],
-        os.environ['PSQL_USER'],
-        os.environ['PSQL_PASS'],
-        os.environ['PSQL_HOST'],
-        os.environ['PSQL_PORT']
-    )
-    station = db.get_station(station_id)
-    statistics = db.get_station_statistics(station_id, months)
+    url = f'http://127.0.0.1:5433/stations/{station_id}?'
+
+    for month in months:
+        url = f'{url}month={month}&'
+
+    resp = requests.get(url)
+    resp.raise_for_status()
+    station_info = resp.json()
+
     return render_template(
         'station.html.j2',
-        station=station,
-        statistics=statistics,
+        station=station_info,
         months=months
     )
 
@@ -2391,8 +2391,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ station.finnish_name }}</td>
-                  <td>{{ station.finnish_address }}</td>
+                  <td>{{ station['name'] }}</td>
+                  <td>{{ station['address'] }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2435,8 +2435,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ statistics.total_departures }}</td>
-                  <td>{{ statistics.total_returns }}</td>
+                  <td>{{ station['journeys_started_here'] }}</td>
+                  <td>{{ station['journeys_ended_here'] }}</td>
                 </tr>
               </tbody>
               <thead>
@@ -2447,8 +2447,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ statistics.average_departure_distance | int }}</td>
-                  <td>{{ statistics.average_return_distance | int }}</td>
+                  <td>{{ station['average_distance_started_here'] }}</td>
+                  <td>{{ station['average_distance_ended_here'] }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2465,10 +2465,10 @@ if __name__ == "__main__":
                 </tr>
               </thead>
               <tbody>
-                {% for journey in statistics.top_returns %}
+                {% for journey in station['top_destinations'] %}
                   <tr>
-                    <td><a href="{{ url_for('station', station_id=journey[0]) }}">{{ journey[1] }}</a></td>
-                    <td>{{ journey[2] }}</td>
+                    <td><a href="{{ url_for('station', station_id=journey['id']) }}">{{ journey['name'] }}</a></td>
+                    <td>{{ journey['journeys'] }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -2486,10 +2486,10 @@ if __name__ == "__main__":
                 </tr>
               </thead>
               <tbody>
-                {% for journey in statistics.top_departures %}
+                {% for journey in station['top_origins'] %}
                   <tr>
-                    <td><a href="{{ url_for('station', station_id=journey[0]) }}">{{ journey[1] }}</a></td>
-                    <td>{{ journey[2] }}</td>
+                    <td><a href="{{ url_for('station', station_id=journey['id']) }}">{{ journey['name'] }}</a></td>
+                    <td>{{ journey['journeys'] }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -2506,8 +2506,8 @@ if __name__ == "__main__":
 
 {% block body_plus %}
   <script>
-    x = {{ station.x }}
-    y = {{ station.y }}
+    x = {{ station['x'] }}
+    y = {{ station['y'] }}
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
@@ -2884,6 +2884,176 @@ OFFSET %(offset)s
                 cursor.execute(sql, sql_params)
                 values = cursor.fetchall()
         return [GetStationsObject(*value) for value in values]
+
+    def _total_journeys_from_and_to_station(self, cursor, params):
+        sql = """
+WITH station AS (
+    SELECT id
+    FROM station
+    WHERE fid = %(id)s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as departures,
+    ( SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as returns
+)
+SELECT returns, departures
+FROM station
+JOIN statistics
+ON station.id = statistics.id
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def _avg_distances_from_and_to_station(self, cursor, params):
+        sql = """
+WITH station AS (
+    SELECT id
+    FROM station
+    WHERE fid = %(id)s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT AVG(distance) as average_departure_distance
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as avg_departure_distance,
+    (
+        SELECT AVG(distance) as average_return_distance
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as avg_return_distance
+)
+SELECT avg_return_distance, avg_departure_distance
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+        """
+
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def _top_destination_stations(self, cursor, params):
+        sql = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %(id)s
+)
+SELECT return_station_id, return_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON journey.departure_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+GROUP BY return_station_name, journey.return_station_id
+ORDER BY count DESC
+LIMIT 5;
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def _top_origin_stations(self, cursor, params):
+        sql = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %(id)s
+)
+SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
+FROM journey
+JOIN our_station
+ON return_station_id = our_station.id
+WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+GROUP BY departure_station_name, departure_station_id
+ORDER BY count DESC
+LIMIT 5;
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def _get_station(self, cursor, params):
+        sql = """
+SELECT finnish_name, finnish_address, x, y
+FROM station
+WHERE fid = %(id)s
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def get_station_info(self, params):
+        if not isinstance(params, GetStationInfoParams):
+            raise TypeError('Expected a GetStationInfoParams')
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                station = self._get_station(cursor, sql_params)
+                total_journeys = self._total_journeys_from_and_to_station(cursor, sql_params)
+                average_distances = self._avg_distances_from_and_to_station(cursor, sql_params)
+                top_destinations = self._top_destination_stations(cursor, sql_params)
+                top_origins = self._top_origin_stations(cursor, sql_params)
+
+        destinations = [StationRelationInfo(*value) for value in top_destinations]
+        origins = [StationRelationInfo(*value) for value in top_origins]
+        return StationInfo(
+            name=station[0],
+            address=station[1],
+            x=station[2],
+            y=station[3],
+            journeys_started_here=total_journeys[1],
+            journeys_ended_here=total_journeys[0],
+            average_distance_started_here=average_distances[0],
+            average_distance_ended_here=average_distances[1],
+            top_destinations=destinations,
+            top_origins=origins
+        )
+
+class GetStationInfoParams:
+    def __init__(self, *, id, months):
+        self.id = id
+        self.months = months
+
+    def as_statement_params(self):
+        return {
+            'id': self.id,
+            'months': self.months
+        }
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destinations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
 #+end_src
 
 *** main.py
@@ -2906,7 +3076,7 @@ db_port = os.environ['PSQL_PORT']
 host = os.environ['HCBB_HOST']
 port = os.environ['HCBB_PORT']
 
-fields = {
+journey = {
     'departure_station_id': fields.Integer,
     'departure_station_name': fields.String,
     'return_station_id': fields.Integer,
@@ -2917,8 +3087,7 @@ fields = {
 
 
 class JourneyList(Resource):
-
-    @marshal_with(fields)
+    @marshal_with(journey)
     def get(self):
         page = int(request.args.get('page', '1'))
         page_size = int(request.args.get('page_size', '10'))
@@ -2960,8 +3129,44 @@ class StationList(Resource):
         db = DB(db_name, db_user, db_pass, db_host, db_port)
         result = db.get_stations(params)
         return result, 200
+
+station_relation_info = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'journeys': fields.Integer,
+}
+
+station_info = {
+    'name': fields.String,
+    'address': fields.String,
+    'x': fields.Float,
+    'y': fields.Float,
+    'journeys_started_here': fields.Integer,
+    'journeys_ended_here': fields.Integer,
+    'average_distance_started_here': fields.Integer,
+    'average_distance_ended_here': fields.Integer,
+    'top_destinations': \
+    fields.List(fields.Nested(station_relation_info)),
+    'top_origins': \
+    fields.List(fields.Nested(station_relation_info))
+}
+
+class StationInfo(Resource):
+    @marshal_with(station_info)
+    def get(self, id):
+        id = int(id)
+        months = request.args.getlist('month')
+        if months == []:
+            months = ('5', '6', '7')
+        months = tuple(map(int, months))
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        params = GetStationInfoParams(id=id, months=months)
+        result = db.get_station_info(params)
+        return result
+
 api.add_resource(JourneyList, '/journeys')
 api.add_resource(StationList, '/stations')
+api.add_resource(StationInfo, '/stations/<int:id>')
 
 if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
