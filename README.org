@@ -10,22 +10,6 @@
     - [[#station-list][Station list]]
     - [[#single-station-view][Single station view]]
     - [[#surprise-us-with][Surprise us with]]
-- [[#requirements][Requirements]]
-  - [[#must][Must]]
-    - [[#implement-the-software-product-the-app-as-a-cloud-native-application][Implement the software product (“The app”) as a cloud native application]]
-    - [[#software-delivered-as-cloud-run-containers][Software delivered as Cloud run containers]]
-    - [[#build-and-deploy-the-app-using-cloud-build][Build and deploy the app using Cloud build]]
-    - [[#store-and-deliver-static-assets-from-cloud-storage][Store and deliver static assets from Cloud Storage]]
-    - [[#implement-end-to-end-tests][Implement end-to-end tests]]
-    - [[#the-frontend-04][The frontend]]
-  - [[#should][Should]]
-    - [[#the-frontend-03][The frontend]]
-  - [[#could][Could]]
-  - [[#wish][Wish]]
-    - [[#run-automated-tests-in-gcp][Run automated tests in GCP]]
-    - [[#endpoints-to-store-new-journeys-data-or-new-bicycle-stations][Endpoints to store new journeys data or new bicycle stations]]
-    - [[#the-frontend][The frontend]]
-    - [[#create-ui-for-adding-journeys-or-bicycle-stationc][Create UI for adding journeys or bicycle stationc]]
 - [[#resources][Resources]]
   - [[#assignment-requirements-specification][Assignment, requirements specification]]
   - [[#academy-homepage][Academy homepage]]
@@ -41,24 +25,34 @@
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
     - [[#journeys-csvs][Journeys CSVs]]
+    - [[#we-want-statistics][We want statistics]]
+    - [[#a-random-station][A random station]]
     - [[#station-csv][Station CSV]]
   - [[#write-the-frontend][Write the frontend]]
+  - [[#write-data-import][Write data import]]
+  - [[#refactor-into-frontend--backend][Refactor into frontend & backend]]
   - [[#mock-up-journeys-list-view][Mock up journeys list view]]
   - [[#explore-hosting-options-on-google-cloud][Explore hosting options on google cloud]]
   - [[#set-up-cloud-sql][Set up cloud SQL]]
 - [[#implementation][Implementation]]
-  - [[#the-frontend-1][The frontend]]
-    - [[#journey-list-view-1][Journey list view]]
+  - [[#the-frontend][The frontend]]
+    - [[#installing][Installing]]
+    - [[#package-requirements][Package requirements]]
+    - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
   - [[#the-backend][The backend]]
   - [[#the-database][The database]]
-  - [[#the-datapump][The datapump]]
-  - [[#the-map-frontend][The map frontend]]
+  - [[#the-data-import][The data import]]
+    - [[#stations][Stations]]
+    - [[#journeys][Journeys]]
 
 * The assignment
 
 Text here lifted from the [[id:40872028-9B66-4C60-BCEA-0F8D427CBF74][repository]].
 
 ** The exercise
+:PROPERTIES:
+:ID:       9916A29B-46A5-4BC2-94E3-F9165C036275
+:END:
 
 Create a *web application* that uses a *backend service* to fetch the data. *Backend* can be made with any technology. We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
 
@@ -772,6 +766,44 @@ ALTER TABLE journey
 ADD COLUMN id SERIAL PRIMARY KEY;
 #+end_src
 
+And some indexes to speed up querying
+
+#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+CREATE INDEX distance_index
+ON journey(distance);
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+
+#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+CREATE INDEX duration_index
+ON journey(duration);
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+
+#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+CREATE INDEX departure_station_index
+ON journey(departure_station_name);
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+
+#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+CREATE INDEX return_station_index
+ON journey(return_station_name);
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+
 How do I get this bad boy to Google SQL cheaply?
 
 Almost all lines in the original csv's contain dups.
@@ -1336,6 +1368,25 @@ Implemented the stations view.
 Added pagination to stations view.
 
 Implemented filtering by month in single station view.
+
+** Write data import
+:LOGBOOK:
+CLOCK: [2023-04-09 Sun 23:12]--[2023-04-10 Mon 01:01] =>  1:49
+CLOCK: [2023-04-09 Sun 19:13]--[2023-04-09 Sun 23:13] =>  4:00
+:END:
+
+** Refactor into frontend & backend
+
+
+Currenly “the app” consists of a single server and an SQL database
+
+The server:
++ Accepts HTTP requests from end users
++ Fetches data from the database with prepared SQL statements
++ Renders data into HTML pages
++ Responds to the end user’s request
+
+One of the requirements outlined in the exercise is to have a [[id:9916A29B-46A5-4BC2-94E3-F9165C036275][separate backend service]] for querying data.  Currently that service is a SQL database instance.  To match the exercise criteria, I need to create a facade service to the database instance.  The facade should follow the [[https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm][REST architectural style]].
 
 ** Mock up journeys list view
 :LOGBOOK:
