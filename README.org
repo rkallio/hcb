@@ -1380,6 +1380,9 @@ CLOCK: [2023-04-09 Sun 19:13]--[2023-04-09 Sun 23:13] =>  4:00
 :END:
 
 ** Refactor into frontend & backend
+:LOGBOOK:
+CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
+:END:
 
 
 Currenly “the app” consists of a single server and an SQL database
@@ -1391,6 +1394,8 @@ The server:
 + Responds to the end user’s request
 
 One of the requirements outlined in the exercise is to have a [[id:9916A29B-46A5-4BC2-94E3-F9165C036275][separate backend service]] for querying data.  Currently that service is a SQL database instance.  To match the exercise criteria, I need to create a facade service to the database instance.  The facade should follow the [[https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm][REST architectural style]].
+
+Moved “the frontend” to to use “the backend” when rendering =/journeys=.
 
 ** Mock up journeys list view
 :LOGBOOK:
@@ -1692,6 +1697,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 #+begin_src python
 Flask
 psycopg2-binary
+requests
 #+end_src
 
 *** The application entrypoint (main.py)
@@ -1707,6 +1713,7 @@ from journey import JourneyRecord
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from station import StationRecord
+import requests
 
 app = Flask(__name__)
 
@@ -1960,21 +1967,50 @@ LIMIT 5;
         return values
 
 
+@dataclass
+class Journey:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
+
 @app.route('/journeys')
 def journeys():
-    page_size = 10
-    # page indexing starts at 1
-    page = max(1, int(request.args.get('page', '1')))
+    page = int(request.args.get('page', '1'))
     search_term = request.args.get('search', '')
     order_by = request.args.get('order_by')
-    direction = request.args.get('direction', 'ascending')
-    pgdb = PostgreDB(
-        os.environ['PSQL_DB'],
-        os.environ['PSQL_USER'],
-        os.environ['PSQL_PASS'],
-        os.environ['PSQL_HOST'],
-        os.environ['PSQL_PORT']
+    direction = request.args.get('direction')
+
+    url = f'http://127.0.0.1:5433/journeys?page={page}'
+
+    if search_term:
+        url = f'{url}&search={search_term}'
+    if order_by:
+        url = f'{url}&order_by={order_by}'
+    if direction:
+        url = f'{url}&direction={direction}'
+
+    resp = requests.get(
+        url
     )
+
+    resp.raise_for_status()
+
+    journeys = [Journey(**journey) for journey in resp.json()]
+
+    return render_template(
+        'journeys.html.j2',
+        journeys=journeys,
+        previous_page=page - 1,
+        next_page=page + 1,
+        page=page,
+        search_term=search_term,
+        order_by=order_by,
+        direction=direction
+    )
+
     journeys = pgdb.get_journeys(page, page_size, search_term, order_by, direction)
     previous_page = None if page == 1 else page - 1
     next_page = page + 1
@@ -2217,10 +2253,18 @@ if __name__ == "__main__":
             <tbody>
               {% for journey in journeys %}
                 <tr>
-                  <td>{{ journey.departure_name }}</td>
-                  <td>{{ journey.return_name }}</td>
-                  <td>{{ (journey.distance * 0.001) | round(1, 'floor') }}</td>
-                  <td>{{ (journey.duration / 60) | int  }}</td>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.departure_station_id) }}">
+                      {{ journey.departure_station_name }}
+                    </a>
+                  </td>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.return_station_id) }}">
+                      {{ journey.return_station_name }}
+                    </a>
+                  </td>
+                  <td>{{ journey.distance | round(1) }}</td>
+                  <td>{{ journey.duration  }}</td>
                 </tr>
               {% endfor %}
             </tbody>
