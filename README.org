@@ -1553,7 +1553,7 @@ The front end is dependent on some external resources.  Handles to those resourc
 
 Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
 
-#+header: :mkdirp yes :tangle sources/hcbf/sample.env
+#+header: :mkdirp yes :tangle hcbf/sample.env
 #+begin_src sh
 HCBF_HOST=127.0.0.1
 HCBF_PORT=5434
@@ -1577,7 +1577,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Package requirements
 
-#+header: :mkdirp yes :tangle sources/hcbf/requirements.txt
+#+header: :mkdirp yes :tangle hcbf/requirements.txt
 #+begin_src python
 Flask
 psycopg2-binary
@@ -1586,7 +1586,7 @@ requests
 
 *** The application entrypoint (main.py)
 
-#+header: :mkdirp yes :tangle sources/hcbf/main.py
+#+header: :mkdirp yes :tangle hcbf/main.py
 #+begin_src python
 from flask import Flask, render_template, request, redirect, url_for
 from dataclasses import dataclass
@@ -1746,7 +1746,7 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/templates/base.html.j2
+#+header: :mkdirp yes :tangle hcbf/templates/base.html.j2
 #+begin_src jinja2
 <!doctype html>
 <html lang="en">
@@ -1798,7 +1798,7 @@ if __name__ == "__main__":
 </html>
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/templates/home.html.j2
+#+header: :mkdirp yes :tangle hcbf/templates/home.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -1820,7 +1820,7 @@ if __name__ == "__main__":
 {% endblock %}
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/templates/journeys.html.j2
+#+header: :mkdirp yes :tangle hcbf/templates/journeys.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -1957,7 +1957,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/templates/stations.html.j2
+#+header: :mkdirp yes :tangle hcbf/templates/stations.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2034,7 +2034,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/templates/station.html.j2
+#+header: :mkdirp yes :tangle hcbf/templates/station.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2178,7 +2178,7 @@ if __name__ == "__main__":
 {% endblock body_plus %}
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/static/osm.js
+#+header: :mkdirp yes :tangle hcbf/static/osm.js
 #+begin_src js
 // Where you want to render the map.
 var element = document.getElementById('osm-map');
@@ -2202,20 +2202,20 @@ L.marker(target)
   .addTo(map);
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/static/style.css
+#+header: :mkdirp yes :tangle hcbf/static/style.css
 #+begin_src css
 
 #+end_src
 
 We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
 
-#+header: :mkdirp yes :tangle sources/hcbf/journey.py
+#+header: :mkdirp yes :tangle hcbf/journey.py
 #+header: :noweb yes
 #+begin_src python
 <<JourneyParser>>
 #+end_src
 
-#+header: :mkdirp yes :tangle sources/hcbf/station.py
+#+header: :mkdirp yes :tangle hcbf/station.py
 #+header: :noweb yes
 #+begin_src python
 <<StationTypes>>
@@ -2254,7 +2254,7 @@ python -m venv env
 
 Here’s a sample configuration file.  It is also provided as a part of “the backend” source as =sample.env=.
 
-#+header: :mkdirp yes :tangle sources/hcbb/sample.env
+#+header: :mkdirp yes :tangle hcbb/sample.env
 #+begin_src sh
 PSQL_DB=hcb
 PSQL_USER=postgres
@@ -2282,7 +2282,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Requirements
 
-#+header: :mkdirp yes :tangle sources/hcbb/requirements.txt
+#+header: :mkdirp yes :tangle hcbb/requirements.txt
 #+begin_src sh
 Flask
 flask_restful
@@ -2291,7 +2291,7 @@ psycopg2-binary
 
 *** db.py
 
-#+header: :mkdirp yes :tangle sources/hcbb/db.py
+#+header: :mkdirp yes :tangle hcbb/db.py
 #+begin_src python
 import psycopg2
 from psycopg2.extensions import AsIs
@@ -2748,7 +2748,7 @@ class StationInfo:
 
 *** main.py
 
-#+header: :mkdirp yes :tangle sources/hcbb/main.py
+#+header: :mkdirp yes :tangle hcbb/main.py
 #+begin_src python
 from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
@@ -2943,14 +2943,14 @@ A python script provided below prepares the database for use.
 
 **** requirements.txt
 
-#+header: :tangle sources/hcbdb/requirements.txt :mkdirp yes
+#+header: :tangle hcbdb/requirements.txt :mkdirp yes
 #+begin_src python
 psycopg2-binary
 #+end_src
 
 **** main.py
 
-#+header: :tangle sources/hcbdb/main.py :mkdirp yes
+#+header: :tangle hcbdb/main.py :mkdirp yes
 #+begin_src python
 
 #+end_src
@@ -2977,7 +2977,7 @@ This is the part of “data import” that downloads station data.
 
 These are the external depe
 
-#+header: :tangle sources/hcbi/stations/requirements.txt :mkdirp yes
+#+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
 #+begin_src text
 requests
 psycopg2-binary
@@ -2988,7 +2988,7 @@ set -a
 source sample.env
 #+end_src
 
-#+header: :tangle sources/hcbi/stations/sample.env :mkdirp yes
+#+header: :tangle hcbi/stations/sample.env :mkdirp yes
 #+begin_src sh
 HCBI_STATION_SOURCE='https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv'
 PSQL_DATABASE=hcb
@@ -2998,7 +2998,7 @@ PSQL_HOST=127.0.0.1
 PSQL_PORT=5432
 #+end_src
 
-#+header: :tangle sources/hcbi/stations/main.py :mkdirp yes
+#+header: :tangle hcbi/stations/main.py :mkdirp yes
 #+begin_src python
 import os
 import requests
@@ -3422,7 +3422,7 @@ Here are some additional requirements I defined for the import process:
   + longer than 150 kilometers
 + Almost all journeys were duplicated in the CSV’s.  Delete any duplicates.
 
-#+header: :tangle sources/hcbi/journeys/requirements.txt :mkdirp yes
+#+header: :tangle hcbi/journeys/requirements.txt :mkdirp yes
 #+begin_src text
 requests
 psycopg2-binary
@@ -3435,7 +3435,7 @@ set -a
 source sample.env
 #+end_src
 
-#+header: :tangle sources/hcbi/journeys/sample.env :mkdirp yes
+#+header: :tangle hcbi/journeys/sample.env :mkdirp yes
 #+begin_src sh
 HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
 PSQL_DATABASE=hcb
@@ -3445,7 +3445,7 @@ PSQL_HOST=127.0.0.1
 PSQL_PORT=5432
 #+end_src
 
-#+header: :tangle sources/hcbi/journeys/main.py :mkdirp yes
+#+header: :tangle hcbi/journeys/main.py :mkdirp yes
 #+begin_src python
 import requests
 import os
