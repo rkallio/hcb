@@ -1,6 +1,10 @@
 #+todo: TODO | DONE
 
 * Table of contents                                                     :TOC:
+- [[#running-locally-with-docker][Running locally with Docker]]
+  - [[#define-a-network][Define a network]]
+  - [[#run-up-a-postgresql-database][Run up a PostgreSQL database]]
+  - [[#define-a-database-and-tables-for-the-postgresql-database][Define a database and tables for the PostgreSQL database.]]
 - [[#the-assignment][The assignment]]
   - [[#the-exercise][The exercise]]
   - [[#stuff-to-do][Stuff to do]]
@@ -46,28 +50,51 @@
     - [[#dbpy][db.py]]
     - [[#mainpy][main.py]]
   - [[#the-database][The database]]
-  - [[#the-data-import][The data import]]
+    - [[#running-the-database][Running the database]]
+    - [[#preparing-the-database][Preparing the database]]
+  - [[#data-import-1][Data import]]
     - [[#stations][Stations]]
     - [[#journeys][Journeys]]
 
+* Running locally with Docker
+
+** Define a network
+
+Set up a network.  This allows the networked components to talk to each other.
+
+#+begin_src sh
+docker network create hcb
+#+end_src
+
+#+RESULTS:
+: hcb
+
+** Run up a PostgreSQL database
+
+Follow the directions provided [[#running][here]].
+
+** Define a database and tables for the PostgreSQL database.
+
+
+
 * The assignment
 
-Text here lifted from the [[id:40872028-9B66-4C60-BCEA-0F8D427CBF74][repository]].
+This section was lifted from the [[https://github.com/solita/dev-academy-2023-exercise][assignment repository]] and modified after.
 
 ** The exercise
 :PROPERTIES:
 :ID:       9916A29B-46A5-4BC2-94E3-F9165C036275
 :END:
 
-Create a *web application* that uses a *backend service* to fetch the data. *Backend* can be made with any technology. We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
+Create a web application that uses a backend service to fetch the data.  Backend can be made with any technology.  We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
 
-Backend can use a database, or it can be memory-based. *Real database use is a preferable* choice because it allows you to show broader skills. Also, the datasets are quite big so in-memory operations may be quite slow.
+Backend can use a database, or it can be memory-based.  Real database use is a preferable choice because it allows you to show broader skills.  Also, the datasets are quite big so in-memory operations may be quite slow.
 
-You can also freely choose the frontend (and possibly mobile frontend) technologies to use. The important part is to give good instructions on how to build and run the project.
+You can also freely choose the frontend (and possibly mobile frontend) technologies to use.  The important part is to give good instructions on how to build and run the project.
 
 ** Stuff to do
 
-Important! Implementing all of the proposed features is not needed for a good exercise result. You may also concentrate on:
+Important! Implementing all of the proposed features is not needed for a good exercise result.  You may also concentrate on:
 
 + Good documentation (readme/other docs)
 + Proper git usage (small commits, informative commit messages)
@@ -78,15 +105,20 @@ Important! Implementing all of the proposed features is not needed for a good ex
 
 ** Functional requirements
 
-Focus on the recommended features. For extra points, you might want to also complete some additional features. You can also come up with extra features, if you do, please document them in the readme!
+Focus on the recommended features.  For extra points, you might want to also complete some additional features.  You can also come up with extra features, if you do, please document them in the readme!
 
 *** Data import
 
 **** Recommended
 
-*****  Import data from the CSV files to a database or in-memory storage
+***** Import data from the CSV files to a database or in-memory storage
+
+Implemented as part of [[id:F2D438E2-A847-4C77-BB55-F7BEBB50A6B4][``The data import'']].
 
 ***** Validate data before importing
+
+Data is validated according to the following rules:
++
 
 ***** Don't import journeys that lasted for less than ten seconds
 
@@ -1421,6 +1453,7 @@ CLOCK: [2023-04-09 Sun 19:13]--[2023-04-09 Sun 23:13] =>  4:00
 
 ** Refactor into frontend & backend
 :LOGBOOK:
+CLOCK: [2023-04-11 Tue 19:44]--[2023-04-11 Tue 19:48] =>  0:04
 CLOCK: [2023-04-10 Mon 23:22]--[2023-04-11 Tue 00:34] =>  1:12
 CLOCK: [2023-04-10 Mon 21:00]--[2023-04-10 Mon 23:00] =>  2:00
 CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
@@ -1676,8 +1709,9 @@ CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
 :END:
 
 “The frontend” offers the following views:
++ A home page
 + [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
-+ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station listing]]
++ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station list]]
 + [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
 
 It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
@@ -1685,7 +1719,7 @@ It is implemented in [[https://www.python.org][Python]] using the [[https://flas
 *** Installing
 
 # TODO provide source code
-To be able to run “the frontend”, your site should have working Python interpreter.  You can download the sources for the front end once I make them available.
+To be able to run “the frontend”, your machine should have a working Python interpreter or Docker.  You can download the sources for the front end once I make them available.
 
 Make sure you are at the root directory of the front end application before running the following commands:
 
@@ -2377,7 +2411,7 @@ We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8
 
 ** The backend
 
-“The backend” is a facade for “The database”.  “A client” may interface with “the backend” via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the “client”.
+“The backend” is a facade for “The database”.  A client may interface with “the backend” via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to a client.
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
@@ -3022,15 +3056,56 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
-
 ** The database
 :PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:header-args:sql: :engine postgres :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
 :END:
 
-Here's our database definition.  You can either execute these statements in an SQL prompt or use the ready-made python program provided at X.  Instructions for the python program are below.
-# TODO add link to python program
+“The database” is a PostgreSQL database.
 
+*** Running the database
+
+Here’s a Docker command to get the database running.  If you have not yet done so, [[#define-a-network][define a Docker network]].
+
+#+begin_src sh
+docker run --rm \
+       --detach \
+       --name=postgres-server \
+       --network=hcb \
+       --publish 5432:5432 \
+       --env POSTGRES_PASSWORD=postgres \
+       postgres
+#+end_src
+
+#+RESULTS:
+: 80ec63e2965c726e60fcdf1b3ccce5869d6cb1fb4f0680393c3c20f24436fa3a
+
+*** Preparing the database
+
+A python script provided below prepares the database for use.
+
+#+caption: requirements.txt
+#+header: :tangle hcbdb/requirements.txt :mkdirp yes
+#+begin_src python
+psycopg2-binary
+#+end_src
+
+
+
+We need to prepare the db instance with a database and some tables.  To connect to the postgreSQL database, use the following Docker command.  You will be prompted for a password, which is =postgres=, as defined [[#running-the-database][here]].
+
+#+begin_src sh
+docker run --interactive --tty --rm \
+       --network hcb \
+       postgres psql \
+       --user postgres \
+       --host postgres-server \
+       postgres
+#+end_src
+
+Next, on the =postgres-#= prompt create a database:
+
+#+header: :results scalar
 #+header: :tangle hcbdb/create-database-hcb.sql :mkdirp yes
 #+header: :database postgres
 #+begin_src sql
@@ -3038,8 +3113,20 @@ CREATE DATABASE hcb;
 #+end_src
 
 #+RESULTS:
-| CREATE DATABASE |
-|-----------------|
+: ?column?
+: 1
+
+Then switch to the created database with the following command:
+
+#+header: :results scalar
+#+header: :database postgres
+#+begin_src sql
+\c hcb
+#+end_src
+
+#+RESULTS:
+
+Create a journey table and some indices.
 
 #+name: create-table-journey
 #+header: :tangle hcbdb/create-table-journey.sql :mkdirp yes
@@ -3058,7 +3145,7 @@ CREATE TABLE journey (
        duration INTEGER
 );
 
--- We need to sort on these columns
+-- We need to sort on the following columns
 CREATE INDEX distance_index
 ON journey(distance);
 
@@ -3108,14 +3195,27 @@ CREATE TABLE  station (
 | CREATE TABLE |
 |--------------|
 
-** The data import
+** Data import
 :PROPERTIES:
 :header-args:python: :mkdirp yes
+:ID:       F2D438E2-A847-4C77-BB55-F7BEBB50A6B4
 :END:
 
-“The data import” reads journey and station data from csv source files, performs some preprocessing and filtering, and dumps the result in to a PostgreSQL database instance.
+“Data import” reads journey and station data from the internet.  This component has two pieces:
++ Journey import
++ Station import
 
 *** Stations
+
+This is the part of “data import” that downloads station data.
+
+**** Running
+
+
+
+**** requirements.txt
+
+These are the external depe
 
 #+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
 #+begin_src text
