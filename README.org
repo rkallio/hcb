@@ -1519,9 +1519,6 @@ CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
 * Implementation
 
 ** The frontend
-:PROPERTIES:
-:header-args: :mkdirp yes :comments link
-:END:
 
 “The frontend” offers the following views:
 + A home page
