@@ -1553,7 +1553,7 @@ The front end is dependent on some external resources.  Handles to those resourc
 
 Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
 
-#+header: :tangle sources/hcbf/sample.env
+#+header: :mkdirp yes :tangle sources/hcbf/sample.env
 #+begin_src sh
 HCBF_HOST=127.0.0.1
 HCBF_PORT=5434
@@ -1577,7 +1577,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Package requirements
 
-#+header: :tangle sources/hcbf/requirements.txt
+#+header: :mkdirp yes :tangle sources/hcbf/requirements.txt
 #+begin_src python
 Flask
 psycopg2-binary
@@ -1586,7 +1586,7 @@ requests
 
 *** The application entrypoint (main.py)
 
-#+header: :tangle sources/hcbf/main.py
+#+header: :mkdirp yes :tangle sources/hcbf/main.py
 #+begin_src python
 from flask import Flask, render_template, request, redirect, url_for
 from dataclasses import dataclass
@@ -1746,7 +1746,7 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
-#+header: :tangle sources/hcbf/templates/base.html.j2
+#+header: :mkdirp yes :tangle sources/hcbf/templates/base.html.j2
 #+begin_src jinja2
 <!doctype html>
 <html lang="en">
@@ -1798,7 +1798,7 @@ if __name__ == "__main__":
 </html>
 #+end_src
 
-#+header: :tangle sources/hcbf/templates/home.html.j2
+#+header: :mkdirp yes :tangle sources/hcbf/templates/home.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -1820,7 +1820,7 @@ if __name__ == "__main__":
 {% endblock %}
 #+end_src
 
-#+header: :tangle sources/hcbf/templates/journeys.html.j2
+#+header: :mkdirp yes :tangle sources/hcbf/templates/journeys.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -1957,7 +1957,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :tangle sources/hcbf/templates/stations.html.j2
+#+header: :mkdirp yes :tangle sources/hcbf/templates/stations.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2034,7 +2034,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :tangle sources/hcbf/templates/station.html.j2
+#+header: :mkdirp yes :tangle sources/hcbf/templates/station.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2178,7 +2178,7 @@ if __name__ == "__main__":
 {% endblock body_plus %}
 #+end_src
 
-#+header: :tangle sources/hcbf/static/osm.js
+#+header: :mkdirp yes :tangle sources/hcbf/static/osm.js
 #+begin_src js
 // Where you want to render the map.
 var element = document.getElementById('osm-map');
@@ -2202,20 +2202,20 @@ L.marker(target)
   .addTo(map);
 #+end_src
 
-#+header: :tangle sources/hcbf/static/style.css
+#+header: :mkdirp yes :tangle sources/hcbf/static/style.css
 #+begin_src css
 
 #+end_src
 
 We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
 
-#+header: :tangle sources/hcbf/journey.py
+#+header: :mkdirp yes :tangle sources/hcbf/journey.py
 #+header: :noweb yes
 #+begin_src python
 <<JourneyParser>>
 #+end_src
 
-#+header: :tangle sources/hcbf/station.py
+#+header: :mkdirp yes :tangle sources/hcbf/station.py
 #+header: :noweb yes
 #+begin_src python
 <<StationTypes>>
