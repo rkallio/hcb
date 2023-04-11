@@ -10,6 +10,6 @@ steps:
         tar cvf sources.tar hcbb hcbf hcbi hcbdb
     id: tangle-sources
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'cp', '-r', 'sources/', 'gs://hcb-helsinki-city-bikes']
+    args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes']
     id: copy-sources
     waitFor: ['tangle-sources']
