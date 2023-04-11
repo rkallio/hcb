@@ -1511,216 +1511,6 @@ CLOCK: [2023-04-06 Thu 14:59]--[2023-04-06 Thu 15:45] =>  0:46
 CLOCK: [2023-04-06 Thu 13:21]--[2023-04-06 Thu 13:41] =>  0:20
 :END:
 
-I was intending to host using cloud run, but seems app engine would be a nice option as well.  Example pulled from here [[https://cloud.google.com/appengine/docs/standard/python3/building-app/writing-web-service]].
-
-#+header: :mkdirp yes :tangle app-engine/templates/index.html
-#+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <title>Datastore and Firebase Auth Example</title>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Datastore and Firebase Auth Example</h1>
-    <h2>Last 10 visits</h2>
-    {% for time in times %}
-      <p>{{ time }}</p>
-    {% endfor %}
-  </body>
-</html>
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/static/script.js
-#+begin_src js
-'use strict';
-
-window.addEventListener('load', function () {
-
-  console.log("Hello World!");
-
-});
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/static/style.css
-#+begin_src css
-body {
-  font-family: "helvetica", sans-serif;
-  text-align: center;
-}
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/main.py
-#+begin_src python
-import datetime
-
-from flask import Flask, render_template
-
-app = Flask(__name__)
-
-
-@app.route('/')
-def root():
-    # For the sake of example, use static information to inflate the
-    # template.  This will be replaced with real information in later
-    # steps.
-    dummy_times = [
-        datetime.datetime(2018, 1, 1, 10, 0, 0),
-        datetime.datetime(2018, 1, 2, 10, 30, 0),
-        datetime.datetime(2018, 1, 3, 11, 0, 0),
-    ]
-
-    return render_template('index.html', times=dummy_times)
-
-
-if __name__ == '__main__':
-    # This is used when running locally only. When deploying to Google
-    # App Engine, a webserver process such as Gunicorn will serve the
-    # app. This can be configured by adding an `entrypoint` to
-    # app.yaml.  Flask's development server will automatically serve
-    # static files in the "static" directory. See:
-    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once
-    # deployed, App Engine itself will serve those files as configured
-    # in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
-#+end_src
-
-#+header: :tangle app-engine/requirements.txt
-#+begin_src text
-Flask==2.1.0
-#+end_src
-
-#+header: :tangle app-engine/.gcloudignore
-#+begin_src text
-# This file specifies files that are *not* uploaded to Google Cloud
-# using gcloud. It follows the same syntax as .gitignore, with the
-# addition of "#!include" directives (which insert the entries of the
-# given .gitignore-style file at that point).
-#
-# For more information, run:
-#   $ gcloud topic gcloudignore
-#
-.gcloudignore
-# If you would like to upload your .git directory, .gitignore file or files
-# from your .gitignore file, remove the corresponding line
-# below:
-.git
-.gitignore
-
-# Python pycache:
-__pycache__/
-# Ignored by the build system
-/setup.cfg
-app-engine
-#+end_src
-
-app.yaml reference is here [[https://cloud.google.com/appengine/docs/standard/reference/app-yaml?tab=python]].
-
-#+header: :tangle app-engine/app.yaml
-#+begin_src yaml
-runtime: python39
-
-handlers:
-  # This configures Google App Engine to serve the files in the app's
-  # static directory.
-- url: /static
-  static_dir: static
-
-  # This handler routes all requests not caught above to your main
-  # app. It is required when static routes are defined, but can be
-  # omitted (along with the entire handlers section) when there are no
-  # static files defined.
-- url: /.*
-  script: auto
-#+end_src
-
-Here's an updated main.py that pushes and pulls data from datastore.
-
-#+header: :tangle app-engine/main.py
-#+begin_src python
-from google.cloud import datastore
-import datetime
-from flask import Flask, render_template
-
-datastore_client = datastore.Client()
-
-def store_time(dt):
-    entity = datastore.Entity(key=datastore_client.key('visit'))
-    entity.update({
-        'timestamp': dt
-    })
-
-    datastore_client.put(entity)
-
-
-def fetch_times(limit):
-    query = datastore_client.query(kind='visit')
-    query.order = ['-timestamp']
-
-    times = query.fetch(limit=limit)
-
-    return times
-
-app = Flask(__name__)
-
-@app.route('/')
-def root():
-    # Store the current access time in Datastore.
-    store_time(datetime.datetime.now(tz=datetime.timezone.utc))
-
-    # Fetch the most recent 10 access times from Datastore.
-    times = fetch_times(10)
-
-    return render_template(
-        'index.html', times=times)
-
-if __name__ == '__main__':
-    # This is used when running locally only. When deploying to Google
-    # App Engine, a webserver process such as Gunicorn will serve the
-    # app. This can be configured by adding an `entrypoint` to
-    # app.yaml.  Flask's development server will automatically serve
-    # static files in the "static" directory. See:
-    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once
-    # deployed, App Engine itself will serve those files as configured
-    # in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
-#+end_src
-
-And here's an updated index.html
-
-#+header: :tangle app-engine/templates/index.html
-#+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <title>Datastore and Firebase Auth Example</title>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Datastore and Firebase Auth Example</h1>
-    <h2>Last 10 visits</h2>
-    {% for time in times %}
-      <p>{{ time['timestamp'] }}</p>
-    {% endfor %}
-  </body>
-</html>
-#+end_src
-
-#+header: :tangle app-engine/requirements.txt
-#+begin_src text
-Flask==2.1.0
-google-cloud-datastore==2.7.1
-#+end_src
-
-Had to run the following to successfully connect to datastore:
-
-#+begin_src sh
-gcloud auth application-default login
-GCLOUD_PROJECT=focal-disk-380217 ./app-engine/bin/python main.py
-#+end_src
-
 ** Set up cloud SQL
 :LOGBOOK:
 CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
@@ -2495,7 +2285,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Requirements
 
-#+header: :tangle sources/hcbb/requirements.txt
+#+header: :mkdirp yes :tangle sources/hcbb/requirements.txt
 #+begin_src sh
 Flask
 flask_restful
@@ -2504,7 +2294,7 @@ psycopg2-binary
 
 *** db.py
 
-#+header: :tangle sources/hcbb/db.py
+#+header: :mkdirp yes :tangle sources/hcbb/db.py
 #+begin_src python
 import psycopg2
 from psycopg2.extensions import AsIs
@@ -2961,7 +2751,7 @@ class StationInfo:
 
 *** main.py
 
-#+header: :tangle sources/hcbb/main.py
+#+header: :mkdirp yes :tangle sources/hcbb/main.py
 #+begin_src python
 from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
@@ -3648,7 +3438,7 @@ set -a
 source sample.env
 #+end_src
 
-#+header: :tangle sources/hcbi/journeys/sample.env
+#+header: :tangle sources/hcbi/journeys/sample.env :mkdirp yes
 #+begin_src sh
 HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
 PSQL_DATABASE=hcb
@@ -3658,7 +3448,7 @@ PSQL_HOST=127.0.0.1
 PSQL_PORT=5432
 #+end_src
 
-#+header: :tangle sources/hcbi/journeys/main.py
+#+header: :tangle sources/hcbi/journeys/main.py :mkdirp yes
 #+begin_src python
 import requests
 import os
