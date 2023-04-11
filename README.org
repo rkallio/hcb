@@ -1709,13 +1709,9 @@ Here’s a sample configuration file.  It is also provided as a part of “the f
 
 #+header: :tangle hcbf/sample.env
 #+begin_src sh
-PSQL_DB=hcb
-PSQL_USER=postgres
-PSQL_PASS=postgres
-PSQL_HOST=localhost
-PSQL_PORT=5432
 HCBF_HOST=127.0.0.1
-HCBF_PORT=8080
+HCBF_PORT=5434
+HCBF_BACKEND_URL=http://127.0.0.1:5433
 #+end_src
 
 You can load the variables into your current shell session with the following commands:
@@ -1749,8 +1745,11 @@ requests
 from flask import Flask, render_template, request, redirect, url_for
 from dataclasses import dataclass
 import requests
+import os
 
 app = Flask(__name__)
+
+backend_url = os.environ['HCBF_BACKEND_URL']
 
 @dataclass
 class Journey:
@@ -1768,7 +1767,7 @@ def journeys():
     order_by = request.args.get('order_by')
     direction = request.args.get('direction')
 
-    url = f'http://127.0.0.1:5433/journeys?page={page}'
+    url = f'{backend_url}/journeys?page={page}'
 
     if search_term:
         url = f'{url}&search={search_term}'
@@ -1805,7 +1804,7 @@ def stations():
     page = max(1, int(request.args.get('page', '1')))
     search_term = request.args.get('search', '')
 
-    url = f'http://127.0.0.1:5433/stations?page={page}'
+    url = f'{backend_url}/stations?page={page}'
 
     if search_term:
         url = f'{url}&search={search_term}'
@@ -1852,7 +1851,7 @@ def station(station_id):
         months = ('5', '6', '7')
 
     months = tuple(map(int, months))
-    url = f'http://127.0.0.1:5433/stations/{station_id}?'
+    url = f'{backend_url}/stations/{station_id}?'
 
     for month in months:
         url = f'{url}month={month}&'
@@ -1883,7 +1882,7 @@ def station(station_id):
 
 @app.route('/random-station')
 def random_station():
-    url = f'http://127.0.0.1:5433/random-station'
+    url = f'{backend_url}/random-station'
     resp = requests.get(url)
     resp.raise_for_status()
     station_id = resp.json()
@@ -1896,7 +1895,9 @@ def home():
     return render_template('home.html.j2')
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=8082, debug=True)
+    host = os.environ['HCBF_HOST']
+    port = os.environ['HCBF_PORT']
+    app.run(host=host, port=port, debug=True)
 #+end_src
 
 #+header: :tangle hcbf/templates/base.html.j2
@@ -2916,8 +2917,6 @@ db_user = os.environ['PSQL_USER']
 db_pass = os.environ['PSQL_PASS']
 db_host = os.environ['PSQL_HOST']
 db_port = os.environ['PSQL_PORT']
-host = os.environ['HCBB_HOST']
-port = os.environ['HCBB_PORT']
 
 journey = {
     'departure_station_id': fields.Integer,
@@ -3018,6 +3017,8 @@ api.add_resource(StationInfo, '/stations/<int:id>')
 api.add_resource(RandomStation, '/random-station')
 
 if __name__ == "__main__":
+    host = os.environ['HCBB_HOST']
+    port = os.environ['HCBB_PORT']
     app.run(host=host, port=port, debug=True)
 #+end_src
 
