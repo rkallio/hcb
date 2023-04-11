@@ -1747,267 +1747,10 @@ requests
 #+header: :tangle hcbf/main.py
 #+begin_src python
 from flask import Flask, render_template, request, redirect, url_for
-import psycopg2
-from psycopg2.extensions import AsIs
-import sqlite3
-import os
-from journey import JourneyRecord
-from abc import ABC, abstractmethod
-from collections import namedtuple
-from station import StationRecord
+from dataclasses import dataclass
 import requests
 
 app = Flask(__name__)
-
-class Database(ABC):
-    @abstractmethod
-    def get_journeys(self, offset, limit):
-        return NotImplemented
-
-    @abstractmethod
-    def get_stations(self, offset, limit):
-        return NotImplemented
-
-    @abstractmethod
-    def get_station(self, station_id):
-        return NotImplemented
-
-    @abstractmethod
-    def get_station(self, station_id):
-        return NotImplemented
-
-    @abstractmethod
-    def get_station_statistics(self, station_id):
-        return NotImplemented
-
-StationRecordPlus = namedtuple(
-    'StationRecordPlus',
-    'fid,finnish_name,finnish_address,returns,departures,x,y',
-)
-
-from dataclasses import dataclass
-
-@dataclass
-class StationStatistics:
-    station_id: int
-    total_returns: int
-    total_departures: int
-    average_return_distance: float
-    average_departure_distance: float
-    top_departures: list
-    top_returns: list
-
-class PostgreDB(Database):
-    # postgre db contains an index (id)
-    JourneyRecord = namedtuple(
-        'JourneyRecord',
-        'id,departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration'
-    )
-
-    def __init__(self, database, user, password, host, port):
-        self.database = database
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-        self.connection = psycopg2.connect(
-            database=self.database,
-            user=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port
-        )
-
-    def get_journeys(self, page, page_size, search_term, order_by, direction):
-        SQL = """
-        SELECT * FROM journey
-        WHERE    departure_station_name ILIKE %s ESCAPE ''
-              OR return_station_name    ILIKE %s ESCAPE ''
-        ORDER BY %s %s, id ASC
-        LIMIT %s
-        OFFSET %s
-        """
-        offset = (page - 1) * page_size
-        search_term = f'%{search_term}%'
-        order_by_mapping = {
-            'departure_station': 'departure_station_name',
-            'return_station': 'return_station_name',
-            'distance': 'distance',
-            'duration': 'duration'
-        }
-        order_by = order_by_mapping.get(order_by, 'id')
-        direction = 'ASC' if direction == 'ascending' else 'DESC'
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (search_term, search_term, AsIs(order_by), AsIs(direction), page_size, offset))
-            values = cursor.fetchall()
-        return [PostgreDB.JourneyRecord._make(value) for value in values]
-
-    def get_stations(self, page, page_size, search_term):
-        SQL = """
-        SELECT *
-        FROM station
-        WHERE    finnish_name    ILIKE %s ESCAPE ''
-              OR finnish_address ILIKE %s ESCAPE ''
-        ORDER BY fid ASC
-        LIMIT %s
-        OFFSET %s
-        """
-        offset = (page - 1) * page_size
-        search_term = f'%{search_term}%'
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (search_term, search_term, page_size, offset))
-            values = cursor.fetchall()
-        return [StationRecord._make(value) for value in values]
-
-    def get_station(self, station_id):
-        SQL = """
-        SELECT * from station
-        WHERE fid = %s
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,))
-            value = cursor.fetchone()
-        return StationRecord._make(value)
-
-    def get_random_station_id(self):
-        SQL = """
-        SELECT fid from station
-        ORDER BY RANDOM()
-        LIMIT 1;
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL)
-            fid = cursor.fetchone()[0]
-        return fid
-
-    def get_station_statistics(self, station_id, months):
-        total_journeys = self._total_journeys_from_and_to_station(station_id, months)
-        avg_distances = self._avg_distances_from_and_to_station(station_id, months)
-        top_return_stations = self._top_return_stations(station_id, months)
-        top_departure_stations = self._top_departure_stations(station_id, months)
-        stats = StationStatistics(
-            station_id=station_id,
-            total_returns=total_journeys[0],
-            total_departures=total_journeys[1],
-            average_return_distance=avg_distances[0],
-            average_departure_distance=avg_distances[1],
-            top_departures=top_departure_stations,
-            top_returns=top_return_stations
-        )
-
-        return stats
-
-    def _total_journeys_from_and_to_station(self, station_id, months):
-        SQL = """
-WITH station AS (
-    SELECT id
-    FROM station
-    WHERE fid = %s
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %s
-    ) as departures,
-    ( SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %s
-    ) as returns
-)
-SELECT returns, departures
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id, months, months))
-            value = cursor.fetchone()
-        return value
-
-    def _avg_distances_from_and_to_station(self, station_id, months):
-        SQL = """
-WITH station AS (
-    SELECT id
-    FROM station
-    WHERE fid = %s
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT AVG(distance) as average_departure_distance
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %s
-    ) as avg_departure_distance,
-    (
-        SELECT AVG(distance) as average_return_distance
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %s
-    ) as avg_return_distance
-)
-SELECT avg_return_distance, avg_departure_distance
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,months,months))
-            value = cursor.fetchone()
-        return value
-
-    def _top_return_stations(self, station_id, months):
-        SQL = """
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = %s
-)
-SELECT return_station_id, return_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN %s
-GROUP BY return_station_name, journey.return_station_id
-ORDER BY count DESC
-LIMIT 5;
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,months))
-            values = cursor.fetchall()
-        return values
-
-    def _top_departure_stations(self, station_id, months):
-        SQL = """
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = %s
-)
-SELECT departure_station_id, departure_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON return_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN %s
-GROUP BY departure_station_name, departure_station_id
-ORDER BY count DESC
-LIMIT 5;
-        """
-        with self.connection.cursor() as cursor:
-            cursor.execute(SQL, (station_id,months))
-            values = cursor.fetchall()
-        return values
-
 
 @dataclass
 class Journey:
@@ -2081,6 +1824,27 @@ def stations():
         search_term=search_term
     )
 
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destionations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
+
+
 @app.route('/station/<int:station_id>')
 def station(station_id):
     months = request.args.getlist('month')
@@ -2093,9 +1857,23 @@ def station(station_id):
     for month in months:
         url = f'{url}month={month}&'
 
-    resp = requests.get(url)
-    resp.raise_for_status()
-    station_info = resp.json()
+    response = requests.get(url)
+    response.raise_for_status()
+    data = response.json()
+    station_info = StationInfo(
+        name=data['name'],
+        address=data['address'],
+        x=data['x'],
+        y=data['y'],
+        journeys_started_here=data['journeys_started_here'],
+        journeys_ended_here=data['journeys_ended_here'],
+        average_distance_started_here=\
+        data['average_distance_started_here'],
+        average_distance_ended_here=\
+        data['average_distance_ended_here'],
+        top_destionations=[StationRelationInfo(**value) for value in data['top_destinations']],
+        top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
+    )
 
     return render_template(
         'station.html.j2',
@@ -2105,15 +1883,13 @@ def station(station_id):
 
 @app.route('/random-station')
 def random_station():
-    db = PostgreDB(
-        os.environ['PSQL_DB'],
-        os.environ['PSQL_USER'],
-        os.environ['PSQL_PASS'],
-        os.environ['PSQL_HOST'],
-        os.environ['PSQL_PORT']
+    url = f'http://127.0.0.1:5433/random-station'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    station_id = resp.json()
+    return redirect(
+        url_for('station', station_id=station_id)
     )
-    fid = db.get_random_station_id()
-    return redirect(url_for('station', station_id=fid))
 
 @app.route('/')
 def home():
@@ -2431,8 +2207,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ station['name'] }}</td>
-                  <td>{{ station['address'] }}</td>
+                  <td>{{ station.name }}</td>
+                  <td>{{ station.address }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2475,8 +2251,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ station['journeys_started_here'] }}</td>
-                  <td>{{ station['journeys_ended_here'] }}</td>
+                  <td>{{ station.journeys_started_here }}</td>
+                  <td>{{ station.journeys_ended_here }}</td>
                 </tr>
               </tbody>
               <thead>
@@ -2487,8 +2263,8 @@ if __name__ == "__main__":
               </thead>
               <tbody>
                 <tr>
-                  <td>{{ station['average_distance_started_here'] }}</td>
-                  <td>{{ station['average_distance_ended_here'] }}</td>
+                  <td>{{ station.average_distance_started_here }}</td>
+                  <td>{{ station.average_distance_ended_here }}</td>
                 </tr>
               </tbody>
             </table>
@@ -2505,10 +2281,10 @@ if __name__ == "__main__":
                 </tr>
               </thead>
               <tbody>
-                {% for journey in station['top_destinations'] %}
+                {% for journey in station.top_destinations %}
                   <tr>
-                    <td><a href="{{ url_for('station', station_id=journey['id']) }}">{{ journey['name'] }}</a></td>
-                    <td>{{ journey['journeys'] }}</td>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -2528,8 +2304,8 @@ if __name__ == "__main__":
               <tbody>
                 {% for journey in station['top_origins'] %}
                   <tr>
-                    <td><a href="{{ url_for('station', station_id=journey['id']) }}">{{ journey['name'] }}</a></td>
-                    <td>{{ journey['journeys'] }}</td>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
                   </tr>
                 {% endfor %}
               </tbody>
@@ -2546,8 +2322,8 @@ if __name__ == "__main__":
 
 {% block body_plus %}
   <script>
-    x = {{ station['x'] }}
-    y = {{ station['y'] }}
+    x = {{ station.x }}
+    y = {{ station.y }}
   </script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
   <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
@@ -2873,6 +2649,20 @@ class DB:
             host=self.host,
             port=self.port
         )
+
+    def get_random_station_id(self):
+        sql = """
+SELECT fid
+FROM station
+ORDER BY RANDOM()
+LIMIT 1
+        """
+
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                value = cursor.fetchone()
+        return value[0]
 
     def get_journeys(self, params):
         if not isinstance(params, GetJourneysParams):
@@ -3217,9 +3007,15 @@ class StationInfo(Resource):
         result = db.get_station_info(params)
         return result
 
+class RandomStation(Resource):
+    def get(self):
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        return db.get_random_station_id()
+
 api.add_resource(JourneyList, '/journeys')
 api.add_resource(StationList, '/stations')
 api.add_resource(StationInfo, '/stations/<int:id>')
+api.add_resource(RandomStation, '/random-station')
 
 if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
