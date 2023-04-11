@@ -2,6 +2,7 @@
 
 * Table of contents                                                     :TOC:
 - [[#running-locally-with-docker][Running locally with Docker]]
+  - [[#download-the-source-tarball][Download the source tarball]]
   - [[#define-a-network][Define a network]]
   - [[#run-up-a-postgresql-database][Run up a PostgreSQL database]]
   - [[#define-a-database-and-tables-for-the-postgresql-database][Define a database and tables for the PostgreSQL database.]]
@@ -25,6 +26,7 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#improvde-documentation][Improvde documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
@@ -50,13 +52,20 @@
     - [[#dbpy][db.py]]
     - [[#mainpy][main.py]]
   - [[#the-database][The database]]
-    - [[#running-the-database][Running the database]]
-    - [[#preparing-the-database][Preparing the database]]
+    - [[#database-preparation-script][Database preparation script]]
   - [[#data-import-1][Data import]]
     - [[#stations][Stations]]
     - [[#journeys][Journeys]]
 
 * Running locally with Docker
+
+** Download the source tarball
+
+All application sources are provided at X.  Download and untar them locally:
+
+#+begin_src sh
+# curl ??? | tar x ???
+#+end_src
 
 ** Define a network
 
@@ -71,7 +80,20 @@ docker network create hcb
 
 ** Run up a PostgreSQL database
 
-Follow the directions provided [[#running][here]].
+Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-network][define a Docker network]].
+
+#+begin_src sh
+docker run --rm \
+       --detach \
+       --name=postgres-server \
+       --network=hcb \
+       --publish 5432:5432 \
+       --env POSTGRES_PASSWORD=postgres \
+       postgres
+#+end_src
+
+#+RESULTS:
+: 80ec63e2965c726e60fcdf1b3ccce5869d6cb1fb4f0680393c3c20f24436fa3a
 
 ** Define a database and tables for the PostgreSQL database.
 
@@ -371,6 +393,12 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+
+** Improvde documentation
+:LOGBOOK:
+CLOCK: [2023-04-11 Tue 21:51]
+:END:
+
 
 ** Get acquainted with the project assignment
 :LOGBOOK:
@@ -709,12 +737,10 @@ podman run --rm -d \
        postgres
 #+end_src
 
-#+header: :tangle ../dataset/export-to-psql-requirements.txt
 #+begin_src text
 psycopg2-binary
 #+end_src
 
-#+header: :tangle ../dataset/export-to-psql.py
 #+begin_src python
 import psycopg2
 import os
@@ -1334,12 +1360,11 @@ class Station:
 
 Here's how I pushed the stuff into psql.
 
-#+header: :tangle ../dataset/station-to-sql-requirements.txt
 #+begin_src text
 psycopg2-binary
 #+end_src
 
-#+header: :tangle ../dataset/station-to-sql.py
+
 #+header: :dir ../dataset/
 #+begin_src python
 import csv
@@ -1741,7 +1766,7 @@ The front end is dependent on some external resources.  Handles to those resourc
 
 Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
 
-#+header: :tangle hcbf/sample.env
+#+header: :tangle sources/hcbf/sample.env
 #+begin_src sh
 HCBF_HOST=127.0.0.1
 HCBF_PORT=5434
@@ -1765,7 +1790,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Package requirements
 
-#+header: :tangle hcbf/requirements.txt
+#+header: :tangle sources/hcbf/requirements.txt
 #+begin_src python
 Flask
 psycopg2-binary
@@ -1774,7 +1799,7 @@ requests
 
 *** The application entrypoint (main.py)
 
-#+header: :tangle hcbf/main.py
+#+header: :tangle sources/hcbf/main.py
 #+begin_src python
 from flask import Flask, render_template, request, redirect, url_for
 from dataclasses import dataclass
@@ -1934,7 +1959,7 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
-#+header: :tangle hcbf/templates/base.html.j2
+#+header: :tangle sources/hcbf/templates/base.html.j2
 #+begin_src jinja2
 <!doctype html>
 <html lang="en">
@@ -1986,7 +2011,7 @@ if __name__ == "__main__":
 </html>
 #+end_src
 
-#+header: :tangle hcbf/templates/home.html.j2
+#+header: :tangle sources/hcbf/templates/home.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2008,7 +2033,7 @@ if __name__ == "__main__":
 {% endblock %}
 #+end_src
 
-#+header: :tangle hcbf/templates/journeys.html.j2
+#+header: :tangle sources/hcbf/templates/journeys.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2145,7 +2170,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :tangle hcbf/templates/stations.html.j2
+#+header: :tangle sources/hcbf/templates/stations.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2222,7 +2247,7 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
-#+header: :tangle hcbf/templates/station.html.j2
+#+header: :tangle sources/hcbf/templates/station.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
@@ -2366,7 +2391,7 @@ if __name__ == "__main__":
 {% endblock body_plus %}
 #+end_src
 
-#+header: :tangle hcbf/static/osm.js
+#+header: :tangle sources/hcbf/static/osm.js
 #+begin_src js
 // Where you want to render the map.
 var element = document.getElementById('osm-map');
@@ -2390,20 +2415,20 @@ L.marker(target)
   .addTo(map);
 #+end_src
 
-#+header: :tangle hcbf/static/style.css
+#+header: :tangle sources/hcbf/static/style.css
 #+begin_src css
 
 #+end_src
 
 We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
 
-#+header: :tangle hcbf/journey.py
+#+header: :tangle sources/hcbf/journey.py
 #+header: :noweb yes
 #+begin_src python
 <<JourneyParser>>
 #+end_src
 
-#+header: :tangle hcbf/station.py
+#+header: :tangle sources/hcbf/station.py
 #+header: :noweb yes
 #+begin_src python
 <<StationTypes>>
@@ -2442,7 +2467,7 @@ python -m venv env
 
 Here’s a sample configuration file.  It is also provided as a part of “the backend” source as =sample.env=.
 
-#+header: :mkdirp yes :tangle hcbb/sample.env
+#+header: :mkdirp yes :tangle sources/hcbb/sample.env
 #+begin_src sh
 PSQL_DB=hcb
 PSQL_USER=postgres
@@ -2470,7 +2495,7 @@ After you’ve installed a Python interpreter, downloaded the python package dep
 
 *** Requirements
 
-#+header: :tangle hcbb/requirements.txt
+#+header: :tangle sources/hcbb/requirements.txt
 #+begin_src sh
 Flask
 flask_restful
@@ -2479,7 +2504,7 @@ psycopg2-binary
 
 *** db.py
 
-#+header: :tangle hcbb/db.py
+#+header: :tangle sources/hcbb/db.py
 #+begin_src python
 import psycopg2
 from psycopg2.extensions import AsIs
@@ -2936,7 +2961,7 @@ class StationInfo:
 
 *** main.py
 
-#+header: :tangle hcbb/main.py
+#+header: :tangle sources/hcbb/main.py
 #+begin_src python
 from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
@@ -3061,75 +3086,18 @@ if __name__ == "__main__":
 :header-args:sql: :engine postgres :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
 :END:
 
-“The database” is a PostgreSQL database.
-
-*** Running the database
-
-Here’s a Docker command to get the database running.  If you have not yet done so, [[#define-a-network][define a Docker network]].
-
-#+begin_src sh
-docker run --rm \
-       --detach \
-       --name=postgres-server \
-       --network=hcb \
-       --publish 5432:5432 \
-       --env POSTGRES_PASSWORD=postgres \
-       postgres
-#+end_src
-
-#+RESULTS:
-: 80ec63e2965c726e60fcdf1b3ccce5869d6cb1fb4f0680393c3c20f24436fa3a
-
-*** Preparing the database
-
-A python script provided below prepares the database for use.
-
-#+caption: requirements.txt
-#+header: :tangle hcbdb/requirements.txt :mkdirp yes
-#+begin_src python
-psycopg2-binary
-#+end_src
-
-
-
-We need to prepare the db instance with a database and some tables.  To connect to the postgreSQL database, use the following Docker command.  You will be prompted for a password, which is =postgres=, as defined [[#running-the-database][here]].
-
-#+begin_src sh
-docker run --interactive --tty --rm \
-       --network hcb \
-       postgres psql \
-       --user postgres \
-       --host postgres-server \
-       postgres
-#+end_src
-
-Next, on the =postgres-#= prompt create a database:
+“The database” is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#running-locally-with-docker][Running locally with Docker]] for setup instructions.
 
 #+header: :results scalar
-#+header: :tangle hcbdb/create-database-hcb.sql :mkdirp yes
 #+header: :database postgres
+#+name: create-database
 #+begin_src sql
 CREATE DATABASE hcb;
 #+end_src
 
-#+RESULTS:
-: ?column?
-: 1
-
-Then switch to the created database with the following command:
-
 #+header: :results scalar
-#+header: :database postgres
-#+begin_src sql
-\c hcb
-#+end_src
-
-#+RESULTS:
-
-Create a journey table and some indices.
-
+#+header: :database hcb
 #+name: create-table-journey
-#+header: :tangle hcbdb/create-table-journey.sql :mkdirp yes
 #+begin_src sql
 BEGIN;
 
@@ -3161,18 +3129,9 @@ ON journey(return_station_name);
 COMMIT;
 #+end_src
 
-#+RESULTS: create-table-journey
-| BEGIN        |
-|--------------|
-| CREATE TABLE |
-| CREATE INDEX |
-| CREATE INDEX |
-| CREATE INDEX |
-| CREATE INDEX |
-| COMMIT       |
-
+#+header: :results scalar
+#+header: :database hcb
 #+name: create-table-station
-#+header: :tangle hcbdb/create-table-station.sql :mkdirp yes
 #+begin_src sql
 CREATE TABLE  station (
        fid INTEGER PRIMARY KEY,
@@ -3191,9 +3150,23 @@ CREATE TABLE  station (
 )
 #+end_src
 
-#+RESULTS: create-table-station
-| CREATE TABLE |
-|--------------|
+*** Database preparation script
+
+A python script provided below prepares the database for use.
+
+**** requirements.txt
+
+#+header: :tangle sources/hcbdb/requirements.txt :mkdirp yes
+#+begin_src python
+psycopg2-binary
+#+end_src
+
+**** main.py
+
+#+header: :tangle sources/hcbdb/main.py :mkdirp yes
+#+begin_src python
+
+#+end_src
 
 ** Data import
 :PROPERTIES:
@@ -3201,7 +3174,7 @@ CREATE TABLE  station (
 :ID:       F2D438E2-A847-4C77-BB55-F7BEBB50A6B4
 :END:
 
-“Data import” reads journey and station data from the internet.  This component has two pieces:
+“Data import” reads journey and station data from the internet.  This component has two separate pieces:
 + Journey import
 + Station import
 
@@ -3217,7 +3190,7 @@ This is the part of “data import” that downloads station data.
 
 These are the external depe
 
-#+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
+#+header: :tangle sources/hcbi/stations/requirements.txt :mkdirp yes
 #+begin_src text
 requests
 psycopg2-binary
@@ -3228,7 +3201,7 @@ set -a
 source sample.env
 #+end_src
 
-#+header: :tangle hcbi/stations/sample.env :mkdirp yes
+#+header: :tangle sources/hcbi/stations/sample.env :mkdirp yes
 #+begin_src sh
 HCBI_STATION_SOURCE='https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv'
 PSQL_DATABASE=hcb
@@ -3238,7 +3211,7 @@ PSQL_HOST=127.0.0.1
 PSQL_PORT=5432
 #+end_src
 
-#+header: :tangle hcbi/stations/main.py :mkdirp yes
+#+header: :tangle sources/hcbi/stations/main.py :mkdirp yes
 #+begin_src python
 import os
 import requests
@@ -3662,7 +3635,7 @@ Here are some additional requirements I defined for the import process:
   + longer than 150 kilometers
 + Almost all journeys were duplicated in the CSV’s.  Delete any duplicates.
 
-#+header: :tangle hcbi/journeys/requirements.txt :mkdirp yes
+#+header: :tangle sources/hcbi/journeys/requirements.txt :mkdirp yes
 #+begin_src text
 requests
 psycopg2-binary
@@ -3675,7 +3648,7 @@ set -a
 source sample.env
 #+end_src
 
-#+header: :tangle hcbi/journeys/sample.env
+#+header: :tangle sources/hcbi/journeys/sample.env
 #+begin_src sh
 HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
 PSQL_DATABASE=hcb
@@ -3685,7 +3658,7 @@ PSQL_HOST=127.0.0.1
 PSQL_PORT=5432
 #+end_src
 
-#+header: :tangle hcbi/journeys/main.py
+#+header: :tangle sources/hcbi/journeys/main.py
 #+begin_src python
 import requests
 import os

@@ -1,0 +1,14 @@
+steps:
+  - name: debian
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        apt update  -y
+        apt install -y emacs-nox
+        emacs -Q --batch --script tangle.el
+    id: tangle-sources
+  - name: 'gcr.io/cloud-builders/gsutil'
+    args: ['-m', 'cp', '-r', 'sources/', 'gs://hcb-helsinki-city-bikes']
+    id: copy-sources
+    waitFor: ['tangle-sources']
