@@ -1,11 +1,13 @@
 #+todo: TODO | DONE
+#+property: header-args :mkdirp yes
+
 
 * Table of contents                                                     :TOC:
 - [[#running-locally-with-docker][Running locally with Docker]]
-  - [[#download-the-source-tarball][Download the source tarball]]
-  - [[#define-a-network][Define a network]]
+  - [[#download-and-extract-the-source-tarballs][Download and extract the source tarballs]]
+  - [[#define-a-docker-network][Define a Docker network]]
   - [[#run-up-a-postgresql-database][Run up a PostgreSQL database]]
-  - [[#define-a-database-and-tables-for-the-postgresql-database][Define a database and tables for the PostgreSQL database.]]
+  - [[#declare-the-database][Declare the database]]
 - [[#the-assignment][The assignment]]
   - [[#the-exercise][The exercise]]
   - [[#stuff-to-do][Stuff to do]]
@@ -59,32 +61,34 @@
 
 * Running locally with Docker
 
-** Download the source tarball
+Here are short instructions to setting up the app locally.
 
-All application sources are provided at X.  Download and untar them locally:
+** Download and extract the source tarballs
 
+The application sources are tangled from this readme file into a tar archive located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+
+#+header: :results scalar
 #+begin_src sh
-# curl ??? | tar x ???
+curl https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar \
+    | tar xv
 #+end_src
 
-** Define a network
+Alternatively, if you have Emacs installed on your machine, open this file in Emacs and run the command =M-x org-babel-tangle=.
 
-Set up a network.  This allows the networked components to talk to each other.
+** Define a Docker network
+
+Set up a Docker network.  This allows the networked components to talk to each other.
 
 #+begin_src sh
 docker network create hcb
 #+end_src
 
-#+RESULTS:
-: hcb
-
 ** Run up a PostgreSQL database
 
-Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-network][define a Docker network]].
+Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-docker-network][define a Docker network]].
 
 #+begin_src sh
-docker run --rm \
-       --detach \
+docker run --rm --detach \
        --name=postgres-server \
        --network=hcb \
        --publish 5432:5432 \
@@ -92,12 +96,40 @@ docker run --rm \
        postgres
 #+end_src
 
+** Declare the database
+
+A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =sample.env=, which can be tweaked in case you run into connection issues.
+
+#+begin_src sh
+cd hcb-setup-database
+docker build --tag=hcb-setup-database .
+docker run --rm --tty \
+       --network=hcb \
+       --env-file=sample.env \
+       hcb-setup-database
+#+end_src
+
+Here are the build and env files for reference:
+
+#+header: :tangle hcb-setup-database/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+ADD main.py .
+RUN pip install -r requirements.txt
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-setup-database/sample.env
+#+begin_src sh
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+#+end_src
+
 #+RESULTS:
-: 80ec63e2965c726e60fcdf1b3ccce5869d6cb1fb4f0680393c3c20f24436fa3a
-
-** Define a database and tables for the PostgreSQL database.
-
-
 
 * The assignment
 
@@ -394,11 +426,11 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 
 * Minutes & Journal
 
-** Improvde documentation
+** Improve documentation
 :LOGBOOK:
-CLOCK: [2023-04-11 Tue 21:51]
+CLOCK: [2023-04-12 Wed 13:57]
+CLOCK: [2023-04-11 Tue 20:51]--[2023-04-12 Wed 00:52] =>  4:01
 :END:
-
 
 ** Get acquainted with the project assignment
 :LOGBOOK:
@@ -2870,21 +2902,19 @@ if __name__ == "__main__":
 
 ** The database
 :PROPERTIES:
-:header-args:sql: :engine postgres :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
+:header-args: :mkdirp yes
 :END:
 
-“The database” is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#running-locally-with-docker][Running locally with Docker]] for setup instructions.
+“The database” is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#declare-the-database][Declare the database]] for setup instructions.
 
-#+header: :results scalar
-#+header: :database postgres
-#+name: create-database
+#+name: create-database-stmt
+#+header: :tangle hcb-setup-database/create-db.sql
 #+begin_src sql
 CREATE DATABASE hcb;
 #+end_src
 
-#+header: :results scalar
-#+header: :database hcb
-#+name: create-table-journey
+#+name: create-journey-stmt
+#+header: :tangle hcb-setup-database/create-tables.sql
 #+begin_src sql
 BEGIN;
 
@@ -2916,9 +2946,8 @@ ON journey(return_station_name);
 COMMIT;
 #+end_src
 
-#+header: :results scalar
-#+header: :database hcb
-#+name: create-table-station
+#+name: create-station-stmt
+#+header: :tangle hcb-setup-database/create-tables.sql
 #+begin_src sql
 CREATE TABLE  station (
        fid INTEGER PRIMARY KEY,
@@ -2934,7 +2963,7 @@ CREATE TABLE  station (
        capacity INTEGER,
        x FLOAT,
        y FLOAT
-)
+);
 #+end_src
 
 *** Database preparation script
@@ -2943,16 +2972,67 @@ A python script provided below prepares the database for use.
 
 **** requirements.txt
 
-#+header: :tangle hcbdb/requirements.txt :mkdirp yes
+#+header: :tangle hcb-setup-database/requirements.txt
 #+begin_src python
 psycopg2-binary
 #+end_src
 
 **** main.py
 
-#+header: :tangle hcbdb/main.py :mkdirp yes
+#+header: :noweb yes
+#+header: :tangle hcb-setup-database/main.py
 #+begin_src python
+import psycopg2
+import os
 
+psql_user = os.environ['PSQL_USERNAME']
+psql_pass = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+
+
+connection = psycopg2.connect(
+    database='postgres',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection\
+    .set_isolation_level(
+        psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
+    )
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-database-stmt>>
+        """
+    )
+
+connection.close()
+
+connection = psycopg2.connect(
+    database='hcb',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection.autocommit = False
+
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-journey-stmt>>
+        """
+    )
+    cursor.execute(
+        """
+<<create-station-stmt>>
+        """
+    )
+
+print('OK')
 #+end_src
 
 ** Data import
