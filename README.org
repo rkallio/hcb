@@ -8,6 +8,9 @@
   - [[#define-a-docker-network][Define a Docker network]]
   - [[#run-up-a-postgresql-database][Run up a PostgreSQL database]]
   - [[#declare-the-database][Declare the database]]
+  - [[#populate-the-database][Populate the database]]
+  - [[#run-up-the-backend][Run up the backend]]
+  - [[#run-up-the-frontend][Run up the frontend]]
 - [[#the-assignment][The assignment]]
   - [[#the-exercise][The exercise]]
   - [[#stuff-to-do][Stuff to do]]
@@ -28,7 +31,7 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
-  - [[#improvde-documentation][Improvde documentation]]
+  - [[#improve-documentation][Improve documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
@@ -44,20 +47,20 @@
   - [[#explore-hosting-options-on-google-cloud][Explore hosting options on google cloud]]
   - [[#set-up-cloud-sql][Set up cloud SQL]]
 - [[#implementation][Implementation]]
+  - [[#the-database][The database]]
+    - [[#sql-statements][SQL statements]]
+    - [[#database-prep-script][Database prep script]]
+  - [[#the-data-import][The data import]]
+    - [[#stations][Stations]]
+    - [[#journeys][Journeys]]
+  - [[#the-backend][The backend]]
+    - [[#requirementstxt][requirements.txt]]
+    - [[#dbpy][db.py]]
+    - [[#mainpy][main.py]]
   - [[#the-frontend][The frontend]]
     - [[#installing][Installing]]
     - [[#package-requirements][Package requirements]]
     - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
-  - [[#the-backend][The backend]]
-    - [[#installing-1][Installing]]
-    - [[#requirements][Requirements]]
-    - [[#dbpy][db.py]]
-    - [[#mainpy][main.py]]
-  - [[#the-database][The database]]
-    - [[#database-preparation-script][Database preparation script]]
-  - [[#data-import-1][Data import]]
-    - [[#stations][Stations]]
-    - [[#journeys][Journeys]]
 
 * Running locally with Docker
 
@@ -65,7 +68,7 @@ Here are short instructions to setting up the app locally.
 
 ** Download and extract the source tarballs
 
-The application sources are tangled from this readme file into a tar archive located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+The application sources are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
 
 #+header: :results scalar
 #+begin_src sh
@@ -109,31 +112,200 @@ docker run --rm --tty \
        hcb-setup-database
 #+end_src
 
-Here are the build and env files for reference:
+Here is the Dockerfile and the sample.env files for reference.
 
 #+header: :tangle hcb-setup-database/Dockerfile
 #+begin_src dockerfile
 FROM python:3.11-slim
 WORKDIR /app
 ADD requirements.txt .
-ADD main.py .
 RUN pip install -r requirements.txt
+ADD main.py .
 CMD python main.py
 #+end_src
 
 #+header: :tangle hcb-setup-database/sample.env
-#+begin_src sh
+#+begin_src conf
 PSQL_USERNAME=postgres
 PSQL_PASSWORD=postgres
 PSQL_HOST=postgres-server
 PSQL_PORT=5432
 #+end_src
 
+** Populate the database
+
+This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to be enough.  If you get a =Killed= message, increase memory allocated to Docker to 4096MB.
+
+#+begin_src sh
+cd hcb-data-import
+docker build --tag=hcb-data-import .
+docker run --rm --tty \
+       --network=hcb \
+       --env-file=sample.env \
+       hcb-data-import
+#+end_src
+
+Here is the =Dockerfile= and the =sample.env= for reference.
+
+#+header: :tangle hcb-data-import/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+ADD stations.py .
+ADD journeys.py .
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-data-import/sample.env
+#+begin_src conf
+HCBI_JOURNEY_SOURCES=https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv
+HCBI_STATION_SOURCE=https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv
+PSQL_DATABASE=hcb
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+#+end_src
+
+** Run up the backend
+
+The backend is untarred into hcb-backend.  Again, there is a Dockerfile and a sample env provided.  Here's how you would build the container and run it:
+
+#+begin_src sh
+cd hcb-backend
+docker build --tag=hcb-backend .
+docker run --rm --detach \
+       --network=hcb \
+       --name=hcb-backend \
+       --env-file=sample.env \
+       --publish 5433:5433 \
+       hcb-backend
+#+end_src
+
+To verify the backend is able to connect to psql and serve requests, try performing a HTTP GET on one of the endpoints:
++ =/journeys=
++ =/stations=
++ =/random-station=
+
+#+header: :wrap src js
+#+begin_src http :pretty
+GET localhost:5433/journeys?page_size=5 HTTP/1.1
+#+end_src
+
 #+RESULTS:
+#+begin_src js
+[
+  {
+    "departure_station_id": 145,
+    "departure_station_name": "Cygnaeuksenkatu",
+    "return_station_id": 181,
+    "return_station_name": "Hietaniemenkatu",
+    "distance": 2.203,
+    "duration": 15
+  },
+  {
+    "departure_station_id": 323,
+    "departure_station_name": "Asentajanpuisto",
+    "return_station_id": 197,
+    "return_station_name": "Kustaankatu",
+    "distance": 5.666,
+    "duration": 21
+  },
+  {
+    "departure_station_id": 197,
+    "departure_station_name": "Kustaankatu",
+    "return_station_id": 242,
+    "return_station_name": "Haukilahdenkatu",
+    "distance": 1.6580000000000001,
+    "duration": 6
+  },
+  {
+    "departure_station_id": 130,
+    "departure_station_name": "Kaisaniemenpuisto",
+    "return_station_id": 224,
+    "return_station_name": "Linnanmäki",
+    "distance": 2.668,
+    "duration": 12
+  },
+  {
+    "departure_station_id": 234,
+    "departure_station_name": "Kalasatama (M)",
+    "return_station_id": 244,
+    "return_station_name": "Sofianlehdonkatu",
+    "distance": 2.548,
+    "duration": 8
+  }
+]
+#+end_src
+
+Here are the =Dockerfile= and =sample.env= file, as a reference.
+
+#+header: :tangle hcb-backend/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+ADD db.py .
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-backend/sample.env
+#+begin_src conf
+PSQL_DB=hcb
+PSQL_USER=postgres
+PSQL_PASS=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+HCBB_HOST=0.0.0.0
+HCBB_PORT=5433
+#+end_src
+
+** Run up the frontend
+
+The frontend is untarred to =hcb-frontend=.  Once again, the directory contains a Dockerfile.  Build and run it.
+
+#+begin_src sh
+cd hcb-frontend
+docker build -t hcb-frontend .
+docker run --rm --detach \
+       --network=hcb \
+       --name=hcb-frontend \
+       --env-file=sample.env \
+       --publish=5434:5434 \
+       hcb-frontend
+#+end_src
+
+To verify everything is working, visit [[http://127.0.0.1:5434/]] using your browser.
+
+Once again, here are the =Dockerfile= and =sample.env= for reference.
+
+#+header: :tangle hcb-frontend/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+COPY templates/ templates/
+COPY static/ static/
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-frontend/sample.env
+#+begin_src conf
+HCBF_HOST=0.0.0.0
+HCBF_PORT=5434
+HCBF_BACKEND_URL=http://hcb-backend:5433
+#+end_src
 
 * The assignment
 
-This section was lifted from the [[https://github.com/solita/dev-academy-2023-exercise][assignment repository]] and modified after.
+This section was lifted from the [[https://github.com/solita/dev-academy-2023-exercise][assignment repository]] and modified afterwards.
 
 ** The exercise
 :PROPERTIES:
@@ -155,7 +327,8 @@ Important! Implementing all of the proposed features is not needed for a good ex
 + Tests
 + Getting features complete
 + Writing good code
-+ Which are all highly valued in a good repository.
+
+Which are all highly valued in a good repository.
 
 ** Functional requirements
 
@@ -167,7 +340,7 @@ Focus on the recommended features.  For extra points, you might want to also com
 
 ***** Import data from the CSV files to a database or in-memory storage
 
-Implemented as part of [[id:F2D438E2-A847-4C77-BB55-F7BEBB50A6B4][``The data import'']].
+Implemented as part of [[#the-data-import][The data import]].
 
 ***** Validate data before importing
 
@@ -428,7 +601,9 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 
 ** Improve documentation
 :LOGBOOK:
-CLOCK: [2023-04-12 Wed 13:57]
+CLOCK: [2023-04-12 Wed 15:56]
+CLOCK: [2023-04-12 Wed 14:49]--[2023-04-12 Wed 15:05] =>  0:16
+CLOCK: [2023-04-12 Wed 13:57]--[2023-04-12 Wed 14:43] =>  0:46
 CLOCK: [2023-04-11 Tue 20:51]--[2023-04-12 Wed 00:52] =>  4:01
 :END:
 
@@ -846,7 +1021,7 @@ for i, journey in enumerate(map(Journey.from_journey_record, map(JourneyRecord._
             journey.duration
         )
     )
-    if i % 1000 == 0:
+    if i % 10000 == 0:
         print(i)
 
 conn.commit()
@@ -1516,7 +1691,6 @@ CLOCK: [2023-04-10 Mon 21:00]--[2023-04-10 Mon 23:00] =>  2:00
 CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
 :END:
 
-
 Currenly “the app” consists of a single server and an SQL database
 
 The server:
@@ -1549,709 +1723,954 @@ CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
 :END:
 
 * Implementation
+** The database
 
-** The frontend
+/The database/ is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#declare-the-database][Declare the database]] for setup instructions.
 
-“The frontend” offers the following views:
-+ A home page
-+ [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
-+ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station list]]
-+ [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
+*** SQL statements
 
-It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
-
-*** Installing
-
-# TODO provide source code
-To be able to run “the frontend”, your machine should have a working Python interpreter or Docker.  You can download the sources for the front end once I make them available.
-
-Make sure you are at the root directory of the front end application before running the following commands:
-
-**** Create a virtual environment in the root directory
-
-#+begin_src sh
-python -m venv env
+#+name: create-database-stmt
+#+begin_src sql
+CREATE DATABASE hcb;
 #+end_src
 
-**** Install Python package dependencies
+#+name: create-journey-stmt
+#+begin_src sql
+BEGIN;
 
-#+begin_src sh
-./env/bin/pip install -r requirements.txt
+CREATE TABLE journey (
+       id SERIAL PRIMARY KEY,
+       departure_time TIMESTAMP,
+       return_time TIMESTAMP,
+       departure_station_id TEXT,
+       departure_station_name TEXT,
+       return_station_id TEXT,
+       return_station_name TEXT,
+       distance FLOAT,
+       duration INTEGER
+);
+
+-- We need to sort on the following columns
+CREATE INDEX distance_index
+ON journey(distance);
+
+CREATE INDEX duration_index
+ON journey(duration);
+
+CREATE INDEX departure_station_name_index
+ON journey(departure_station_name);
+
+CREATE INDEX return_station_name_index
+ON journey(return_station_name);
+
+COMMIT;
 #+end_src
 
-**** Run the front end
-
-The front end is dependent on some external resources.  Handles to those resources are communicated via environment variables.
-
-Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
-
-#+header: :mkdirp yes :tangle hcbf/sample.env
-#+begin_src sh
-HCBF_HOST=127.0.0.1
-HCBF_PORT=5434
-HCBF_BACKEND_URL=http://127.0.0.1:5433
+#+name: create-station-stmt
+#+begin_src sql
+CREATE TABLE  station (
+       fid INTEGER PRIMARY KEY,
+       id TEXT,
+       finnish_name TEXT,
+       swedish_name TEXT,
+       english_name TEXT,
+       finnish_address TEXT,
+       swedish_address TEXT,
+       finnish_city TEXT,
+       swedish_city TEXT,
+       operator TEXT,
+       capacity INTEGER,
+       x FLOAT,
+       y FLOAT
+);
 #+end_src
 
-You can load the variables into your current shell session with the following commands:
+*** Database prep script
 
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
+A python script provided below prepares the database for use.  Execution instructions are provided in section [[#declare-the-database][Declare the database]].
 
-*Note:* The app will crash sooner or later if one of the environment variables is not properly set.  This is a very convenient way to notify the user of a configuration error.
+**** requirements.txt
 
-After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
-
-#+begin_src sh
-./env/bin/python main.py
-#+end_src
-
-*** Package requirements
-
-#+header: :mkdirp yes :tangle hcbf/requirements.txt
+#+header: :tangle hcb-setup-database/requirements.txt
 #+begin_src python
-Flask
+psycopg2-binary
+#+end_src
+
+**** main.py
+
+#+header: :noweb yes
+#+header: :tangle hcb-setup-database/main.py
+#+begin_src python
+import psycopg2
+import os
+
+psql_user = os.environ['PSQL_USERNAME']
+psql_pass = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+
+connection = psycopg2.connect(
+    database='postgres',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection\
+    .set_isolation_level(
+        psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
+    )
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-database-stmt>>
+        """
+    )
+
+connection.close()
+
+connection = psycopg2.connect(
+    database='hcb',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection.autocommit = False
+
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-journey-stmt>>
+        """
+    )
+    cursor.execute(
+        """
+<<create-station-stmt>>
+        """
+    )
+
+print('OK')
+#+end_src
+
+** The data import
+
+“Data import” reads journey and station data from the internet.  This component has two separate pieces:
++ Journey import
++ Station import
+
+#+header: :tangle hcb-data-import/main.py :mkdirp yes
+#+begin_src python
+import journeys
+import stations
+
+if __name__ == "__main__":
+    stations.main()
+    journeys.main()
+#+end_src
+
+#+header: :tangle hcb-data-import/requirements.txt :mkdirp yes
+#+begin_src text
 psycopg2-binary
 requests
 #+end_src
 
-*** The application entrypoint (main.py)
+*** Stations
 
-#+header: :mkdirp yes :tangle hcbf/main.py
+This is the part of data import that downloads station data.
+
+This imports station data and pushes it to a PostgreSQL.
+
+#+header: :tangle hcb-data-import/stations.py :mkdirp yes
 #+begin_src python
-from flask import Flask, render_template, request, redirect, url_for
-from dataclasses import dataclass
-import requests
 import os
+import requests
+from collections import namedtuple
+import csv
+import json
+import psycopg2
 
-app = Flask(__name__)
+psql_database = os.environ['PSQL_DATABASE']
+psql_user = os.environ['PSQL_USERNAME']
+psql_password = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+station_sources = os.environ['HCBI_STATION_SOURCE']
 
-backend_url = os.environ['HCBF_BACKEND_URL']
+def download_network_file(networkfile):
+    """Download a csv from the net, write to local site.
 
-@dataclass
-class Journey:
-    departure_station_id: int
-    departure_station_name: str
-    return_station_id: int
-    return_station_name: str
-    distance: float
-    duration: int
+    Return local file's path.
 
-@app.route('/journeys')
-def journeys():
-    page = int(request.args.get('page', '1'))
-    search_term = request.args.get('search', '')
-    order_by = request.args.get('order_by')
-    direction = request.args.get('direction')
+    """
 
-    url = f'{backend_url}/journeys?page={page}'
-
-    if search_term:
-        url = f'{url}&search={search_term}'
-    if order_by:
-        url = f'{url}&order_by={order_by}'
-    if direction:
-        url = f'{url}&direction={direction}'
-
-    resp = requests.get(url)
-
-    resp.raise_for_status()
-
-    journeys = [Journey(**journey) for journey in resp.json()]
-
-    return render_template(
-        'journeys.html.j2',
-        journeys=journeys,
-        previous_page=max(page - 1, 1),
-        next_page=page + 1,
-        page=page,
-        search_term=search_term,
-        order_by=order_by,
-        direction=direction
+    localpath = os.path.abspath(
+        os.path.join(
+            '.',
+            os.path.basename(networkfile)
+        )
     )
 
-@dataclass
+    if os.path.exists(localpath):
+        print(f'file {localpath} exists, not redownloading')
+    else:
+        print(f'downloading {networkfile}',
+              f'to {localpath}', sep='\n')
+
+        with open(localpath, 'w') as localfile:
+            response = requests.get(networkfile)
+            response.raise_for_status()
+            localfile.write(response.text)
+
+    return localpath
+
+StationTuple = namedtuple(
+    'StationTuple',
+    'fid,'
+    'id,'
+    'finnish_name,'
+    'swedish_name,'
+    'english_name,'
+    'finnish_address,'
+    'swedish_address,'
+    'finnish_city,'
+    'swedish_city,'
+    'operator,'
+    'capacity,'
+    'x,'
+    'y'
+)
+
 class Station:
-    id: int
-    name: str
-    address: str
+    def __init__(
+            self,
+            fid,
+            id,
+            finnish_name,
+            swedish_name,
+            english_name,
+            finnish_address,
+            swedish_address,
+            finnish_city,
+            swedish_city,
+            operator,
+            capacity,
+            x,
+            y
+    ):
+        self.fid = fid
+        self.id = id
+        self.finnish_name = finnish_name
+        self.swedish_name = swedish_name
+        self.english_name = english_name
+        self.finnish_address = finnish_address
+        self.swedish_address = swedish_address
+        self.finnish_city = finnish_city
+        self.swedish_city = swedish_city
+        self.operator = operator
+        self.capacity = capacity
+        self.x = x
+        self.y = y
 
-@app.route('/stations')
-def stations():
-    page = max(1, int(request.args.get('page', '1')))
-    search_term = request.args.get('search', '')
+    @staticmethod
+    def from_dict(dct):
+        return Station(**dct)
 
-    url = f'{backend_url}/stations?page={page}'
+    def to_dict(self):
+        return {
+            'fid': self.fid,
+            'id': self.id,
+            'finnish_name': self.finnish_name,
+            'swedish_name': self.swedish_name,
+            'english_name': self.english_name,
+            'finnish_address': self.finnish_address,
+            'swedish_address': self.swedish_address,
+            'finnish_city': self.finnish_city,
+            'swedish_city': self.swedish_city,
+            'operator': self.operator,
+            'capacity': self.capacity,
+            'x': self.x,
+            'y': self.y
+        }
 
-    if search_term:
-        url = f'{url}&search={search_term}'
-    resp = requests.get(url)
-    resp.raise_for_status()
-    stations = [Station(**station) for station in resp.json()]
+    def __repr__(self):
+        return (
+            'Station('
+            f'{str(self.fid)!r}, '
+            f'{self.id!r}, '
+            f'{self.finnish_name!r}, '
+            f'{self.swedish_name!r}, '
+            f'{self.english_name!r}, '
+            f'{self.finnish_address!r}, '
+            f'{self.swedish_address!r}, '
+            f'{self.finnish_city!r},'
+            f'{self.swedish_city!r},'
+            f'{self.operator!r},'
+            f'{str(self.capacity)!r},'
+            f'{str(self.x)!r},'
+            f'{str(self.y)!r}'
+            ')'
+        )
 
-    previous_page = None if page == 1 else page - 1
-    next_page = page + 1
-    return render_template(
-        'stations.html.j2',
-        stations=stations,
-        previous_page=previous_page,
-        page=page,
-        next_page=next_page,
-        search_term=search_term
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self, y):
+        if isinstance(y, str):
+            y = float(y)
+
+        if not isinstance(y, float):
+            raise TypeError('y must be a float')
+        self._y = y
+
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter
+    def x(self, x):
+        if isinstance(x, str):
+            x = float(x)
+
+        if not isinstance(x, float):
+            raise TypeError('x must be a float')
+        self._x = x
+
+    @property
+    def capacity(self):
+        return self._capacity
+
+    @capacity.setter
+    def capacity(self, capacity):
+        if isinstance(capacity, str):
+            capacity = int(capacity)
+
+        if not isinstance(capacity, int):
+            raise TypeError('capacity must be an int')
+        self._capacity = capacity
+
+    @property
+    def operator(self):
+        return self._operator
+
+    @operator.setter
+    def operator(self, operator):
+        if isinstance(operator, str):
+            operator = operator.strip()
+            if len(operator) == 0:
+                operator = None
+
+        if not (operator is None
+                or isinstance(operator, str)):
+            raise TypeError('operator must be a str or None')
+        self._operator = operator
+
+
+    @property
+    def swedish_city(self):
+        return self._swedish_city
+
+    @swedish_city.setter
+    def swedish_city(self, swedish_city):
+        if isinstance(swedish_city, str):
+            swedish_city = swedish_city.strip()
+            if len(swedish_city) == 0:
+                swedish_city = None
+
+        if not (swedish_city is None
+                or isinstance(swedish_city, str)):
+            raise TypeError('swedish_city must be a str or None')
+        self._swedish_city = swedish_city
+
+
+    @property
+    def finnish_city(self):
+        return self._finnish_city
+
+    @finnish_city.setter
+    def finnish_city(self, finnish_city):
+        if isinstance(finnish_city, str):
+            finnish_city = finnish_city.strip()
+            if len(finnish_city) == 0:
+                finnish_city = None
+
+        if not (finnish_city is None
+                or isinstance(finnish_city, str)):
+            raise TypeError('finnish_city must be a str or None')
+        self._finnish_city = finnish_city
+
+    @property
+    def swedish_address(self):
+        return self._swedish_address
+
+    @swedish_address.setter
+    def swedish_address(self, swedish_address):
+        if isinstance(swedish_address, str):
+            swedish_address = swedish_address.strip()
+            if len(swedish_address) == 0:
+                swedish_address = None
+
+        if not (swedish_address is None
+                or isinstance(swedish_address, str)):
+            raise TypeError('swedish_address must be a str or None')
+        self._swedish_address = swedish_address
+
+
+    @property
+    def finnish_address(self):
+        return self._finnish_address
+
+    @finnish_address.setter
+    def finnish_address(self, finnish_address):
+        if isinstance(finnish_address, str):
+            finnish_address = finnish_address.strip()
+            if len(finnish_address) == 0:
+                finnish_address = None
+
+        if not (finnish_address is None
+                or isinstance(finnish_address, str)):
+            raise TypeError('finnish_address must be a str or None')
+        self._finnish_address = finnish_address
+
+    @property
+    def english_name(self):
+        return self._english_name
+
+    @english_name.setter
+    def english_name(self, english_name):
+        if isinstance(english_name, str):
+            english_name = english_name.strip()
+            if len(english_name) == 0:
+                english_name = None
+
+
+        if not (english_name is None
+                or isinstance(english_name, str)):
+            raise TypeError('english_name must be a str or None')
+        self._english_name = english_name
+
+    @property
+    def swedish_name(self):
+        return self._swedish_name
+
+    @swedish_name.setter
+    def swedish_name(self, swedish_name):
+        if isinstance(swedish_name, str):
+            swedish_name = swedish_name.strip()
+            if len(swedish_name) == 0:
+                swedish_name = None
+
+        if not (swedish_name is None
+                or isinstance(swedish_name, str)):
+            raise TypeError('swedish_name must be a str or None')
+        self._swedish_name = swedish_name
+
+    @property
+    def finnish_name(self):
+        return self._finnish_name
+
+    @finnish_name.setter
+    def finnish_name(self, finnish_name):
+        if isinstance(finnish_name, str):
+            finnish_name = finnish_name.strip()
+            if len(finnish_name) == 0:
+                finnish_name = None
+
+        if not (finnish_name is None
+                or isinstance(finnish_name, str)):
+            raise TypeError('finnish_name must be a str or None')
+        self._finnish_name = finnish_name
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if not isinstance(id, str):
+            raise TypeError('id must be a str')
+        self._id = id
+
+    @property
+    def fid(self):
+        return self._fid
+
+    @fid.setter
+    def fid(self, fid):
+        if isinstance(fid, str):
+            fid = int(fid)
+        if not isinstance(fid, int):
+            raise TypeError('fid must be an int')
+        self._fid = fid
+
+def parse_entries(filepath):
+    reader = csv.reader(open(filepath, newline=''))
+    # skip header
+    next(reader)
+    success, fail = [], []
+    for entry in reader:
+        tup = StationTuple._make(entry)
+        try:
+            success.append(Station(*tup).to_dict())
+        except Exception as e:
+            fail.append({ 'error': str(e), 'entry': entry })
+    return success, fail
+
+def download_and_filter(networkfile):
+    """Download and process station data into a json file.
+
+    Download the network files to site.  Return a filepath containing
+    downloaded data.
+
+    """
+
+    resultpath = os.path.abspath(
+        os.path.join('.', 'stations.json')
     )
 
-
-@dataclass
-class StationRelationInfo:
-    id: int
-    name: str
-    journeys: int
-
-@dataclass
-class StationInfo:
-    name: str
-    address: str
-    x: float
-    y: float
-    journeys_started_here: int
-    journeys_ended_here: int
-    average_distance_started_here: int
-    average_distance_ended_here: int
-    top_destionations: list[StationRelationInfo]
-    top_origins: list[StationRelationInfo]
+    if os.path.exists(resultpath):
+        print(f'{resultpath} exists, not redownloading')
+        return resultpath
+    file = download_network_file(networkfile)
+    success, fails = parse_entries(file)
+    json.dump(success, open('stations.json', 'w'), indent=4)
+    json.dump(fails, open('bad-data.json', 'w'), indent=4)
+    return 'stations.json'
 
 
-@app.route('/station/<int:station_id>')
-def station(station_id):
-    months = request.args.getlist('month')
-    if months == []:
-        months = ('5', '6', '7')
+def push_to_sql(stationpath):
+    with open(stationpath, 'r') as fp:
+        stations = [
+            Station.from_dict(dct) for dct in json.load(fp)
+        ]
 
-    months = tuple(map(int, months))
-    url = f'{backend_url}/stations/{station_id}?'
-
-    for month in months:
-        url = f'{url}month={month}&'
-
-    response = requests.get(url)
-    response.raise_for_status()
-    data = response.json()
-    station_info = StationInfo(
-        name=data['name'],
-        address=data['address'],
-        x=data['x'],
-        y=data['y'],
-        journeys_started_here=data['journeys_started_here'],
-        journeys_ended_here=data['journeys_ended_here'],
-        average_distance_started_here=\
-        data['average_distance_started_here'],
-        average_distance_ended_here=\
-        data['average_distance_ended_here'],
-        top_destionations=[StationRelationInfo(**value) for value in data['top_destinations']],
-        top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
+    connection = psycopg2.connect(
+        database=psql_database,
+        user=psql_user,
+        password=psql_password,
+        host=psql_host,
+        port=psql_port
     )
 
-    return render_template(
-        'station.html.j2',
-        station=station_info,
-        months=months
-    )
+    insert_statement = """
+INSERT INTO station (
+    fid,
+    id,
+    finnish_name,
+    swedish_name,
+    english_name,
+    finnish_address,
+    swedish_address,
+    finnish_city,
+    swedish_city,
+    operator,
+    capacity,
+    x,
+    y
+)
+VALUES (
+    %(fid)s,
+    %(id)s,
+    %(finnish_name)s,
+    %(swedish_name)s,
+    %(english_name)s,
+    %(finnish_address)s,
+    %(swedish_address)s,
+    %(finnish_city)s,
+    %(swedish_city)s,
+    %(operator)s,
+    %(capacity)s,
+    %(x)s,
+    %(y)s
+)
+    """
+    with connection.cursor() as cursor:
+        for station in stations:
+            dct = station.to_dict()
+            cursor.execute(insert_statement, dct)
+    connection.commit()
+    print('done')
+    connection.close()
 
-@app.route('/random-station')
-def random_station():
-    url = f'{backend_url}/random-station'
-    resp = requests.get(url)
-    resp.raise_for_status()
-    station_id = resp.json()
-    return redirect(
-        url_for('station', station_id=station_id)
-    )
-
-@app.route('/')
-def home():
-    return render_template('home.html.j2')
+def main():
+    stationpath = \
+        download_and_filter(station_sources)
+    push_to_sql(stationpath)
 
 if __name__ == "__main__":
-    host = os.environ['HCBF_HOST']
-    port = os.environ['HCBF_PORT']
-    app.run(host=host, port=port, debug=True)
+    main()
 #+end_src
 
-#+header: :mkdirp yes :tangle hcbf/templates/base.html.j2
-#+begin_src jinja2
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    {% block head_plus %}
-    {% endblock head_plus %}
-    <title>
-      {% block title %}
-        Helsinki city bikes
-      {% endblock title %}
-    </title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
-  </head>
-  <body>
-    {% block navbar %}
-      <nav class="navbar navbar-expand-lg bg-light">
-        <div class="container-fluid">
-          <a class="navbar-brand" href="#">Helsinki City Bikes</a>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-          <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('home') }}">Home</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </nav>
-    {% endblock navbar %}
-    {% block content %}
-      <p>Implement the content block</p>
-    {% endblock content %}
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+*** Journeys
 
-    {% block body_plus %}
-    {% endblock body_plus %}
-  </body>
-</html>
-#+end_src
+Functional requirements for the data import are:
++ Don't import journeys that lasted < 10 seconds
++ Don't import journeys that covered < 10 meters
 
-#+header: :mkdirp yes :tangle hcbf/templates/home.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
+Here are some additional requirements I defined for the import process:
++ Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
+  + longer than 600 minutes
+  + longer than 150 kilometers
++ Almost all journeys were duplicated in the CSV's.  Delete any duplicates.
 
-{% block content %}
-  <div class="container">
-    <div class="row align-items-center">
-      <div class="col d-flex justify-content-center">
-        <p class="lead mt-5">
-          Pick a table category from the top nav bar, or...
-        </p>
-      </div>
-    </div>
-    <div class="row align-items-center">
-      <div class="col d-flex justify-content-center">
-        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
-      </div>
-    </div>
-  </div>
-{% endblock %}
-#+end_src
-
-#+header: :mkdirp yes :tangle hcbf/templates/journeys.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block head_plus %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
-{% endblock %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <h1>Journeys</h1>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <form>
-          <div class="input-group" id="form">
-            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
-            <button type="submit" class="btn btn-primary">Search</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead>
-              <tr>
-                <th>
-                  {% if order_by == 'departure_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='descending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'return_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='descending') }}">Return station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'distance' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='descending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'duration' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='descending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                  {% endif %}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for journey in journeys %}
-                <tr>
-                  <td>
-                    <a href="{{ url_for('station', station_id=journey.departure_station_id) }}">
-                      {{ journey.departure_station_name }}
-                    </a>
-                  </td>
-                  <td>
-                    <a href="{{ url_for('station', station_id=journey.return_station_id) }}">
-                      {{ journey.return_station_name }}
-                    </a>
-                  </td>
-                  <td>{{ journey.distance | round(1) }}</td>
-                  <td>{{ journey.duration  }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <ul class="pagination">
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="{{ url_for('journeys', page=previous_page, search=search_term, order_by=order_by, direction=direction) }}">
-              Previous
-            </a>
-          </li>
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="#">
-              {{ page }}
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link"
-               href="{{ url_for('journeys', page=next_page, search=search_term, order_by=order_by, direction=direction) }}">
-               Next
-            </a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-#+end_src
-
-#+header: :mkdirp yes :tangle hcbf/templates/stations.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <h1>Stations</h1>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <form>
-          <div class="input-group">
-            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
-            <button type="submit" class="btn btn-primary">Search</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Address</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for station in stations %}
-                <tr>
-                  <td>
-                    <a href="{{ url_for('station', station_id=station.id) }}">
-                      {{ station.name }}
-                    </a>
-                  </td>
-                  <td>{{ station.address }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <ul class="pagination">
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="{{ url_for('stations', page=previous_page, search=search_term) }}">
-              Previous
-            </a>
-          </li>
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="#">
-              {{ page }}
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link"
-               href="{{ url_for('stations', page=next_page, search=search_term) }}">
-               Next
-            </a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-#+end_src
-
-#+header: :mkdirp yes :tangle hcbf/templates/station.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col-12 col-md-6">
-        <div class="row">
-          <div class="col">
-            <h3>Station</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.name }}</td>
-                  <td>{{ station.address }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <div class="row">
-              <div class="col">
-                <h3>Details</h3>
-              </div>
-            </div>
-            <form>
-              <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
-                     {% if 5 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="may">May</label>
-
-              <input type="checkbox" class="btn-check" id="june" autocomplete="off" name="month" value="6"
-                     {% if 6 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="june">June</label>
-
-              <input type="checkbox" class="btn-check" id="july" autocomplete="off" name="month" value="7"
-                     {% if 7 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="july">July</label>
-
-              <button type="submit" class="btn btn-primary">Recompute</button>
-            </form>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Journeys started here</th>
-                  <th>Journeys ended here</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.journeys_started_here }}</td>
-                  <td>{{ station.journeys_ended_here }}</td>
-                </tr>
-              </tbody>
-              <thead>
-                <tr>
-                  <th>Average journey from here (m)</th>
-                  <th>Average journey to here (m)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.average_distance_started_here }}</td>
-                  <td>{{ station.average_distance_ended_here }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <h3>Top destinations</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Journeys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for journey in station.top_destinations %}
-                  <tr>
-                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
-                    <td>{{ journey.journeys }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <h3>Top origins</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Journeys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for journey in station['top_origins'] %}
-                  <tr>
-                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
-                    <td>{{ journey.journeys }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div id="osm-map"></div>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-
-{% block body_plus %}
-  <script>
-    x = {{ station.x }}
-    y = {{ station.y }}
-  </script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
-  <script src="{{ url_for('static', filename="osm.js") }}"></script>
-{% endblock body_plus %}
-#+end_src
-
-#+header: :mkdirp yes :tangle hcbf/static/osm.js
-#+begin_src js
-// Where you want to render the map.
-var element = document.getElementById('osm-map');
-
-// Height has to be set. You can do this in CSS too.
-element.style = 'height:600px;'
-
-// Create Leaflet map on map element.
-var map = L.map(element);
-
-// Add OSM tile layer to the Leaflet map.
-L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
-
-var target = L.latLng(y, x);
-
-map.setView(target, 13);
-
-L.marker(target)
-  .addTo(map);
-#+end_src
-
-#+header: :mkdirp yes :tangle hcbf/static/style.css
-#+begin_src css
-
-#+end_src
-
-We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
-
-#+header: :mkdirp yes :tangle hcbf/journey.py
-#+header: :noweb yes
+#+header: :tangle hcb-data-import/journeys.py :mkdirp yes
 #+begin_src python
-<<JourneyParser>>
+import requests
+import os
+from io import StringIO
+import csv
+from collections import namedtuple
+from datetime import datetime
+import json
+import psycopg2
+
+journey_sources = os.environ['HCBI_JOURNEY_SOURCES'].split(' ')
+psql_database = os.environ['PSQL_DATABASE']
+psql_user = os.environ['PSQL_USERNAME']
+psql_password = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+
+print(journey_sources)
+def download_network_files(networkfiles):
+    """Downloads csv's from the net and writes to site's disk.
+
+    networkfiles is a list of network files.
+
+    Returns local file paths if successful.
+
+    """
+
+    paths = []
+    for networkpath in networkfiles:
+        localpath = os.path.abspath(
+            os.path.join(
+                '.',
+                os.path.basename(networkpath),
+            )
+        )
+
+        if os.path.exists(localpath):
+            print(f'file {localpath} exists, so not redownloading')
+        else:
+            print(f'Downloading: {networkpath}',
+                  f'to: {localpath}', sep='\n')
+
+            with open(localpath, 'w') as localfile:
+                # some weird interaction causes this request to fail
+                # inside a Docker container, if certificates are
+                # verified
+                response = requests.get(
+                    networkpath,
+                    verify=False,
+                )
+                response.raise_for_status()
+                localfile.write(response.text)
+        paths.append(localpath)
+    return paths
+
+def delete_dups(entries):
+    """Delete duplicates in a list of entries.
+
+    Returns a list containing only unique entries.
+
+    """
+    return list(set(entries))
+
+def merge_entries(filepaths):
+    """Merge entries from multiple csv filepaths into one.
+
+    Deletes a header line from each file.
+
+    """
+    entries = []
+    for path in filepaths:
+        with open(path, 'r') as fp:
+            next(fp)
+            for line in fp:
+                entries.append(line)
+    return entries
+
+JourneyTuple = namedtuple(
+        'JourneyTuple',
+        'departure_time,'
+        'return_time,'
+        'departure_station_id,'
+        'departure_station_name,'
+        'return_station_id,'
+        'return_station_name,'
+        'distance,'
+        'duration'
+    )
+
+class Journey:
+
+    def __init__(
+            self,
+            departure_time,
+            return_time,
+            departure_station_id,
+            departure_station_name,
+            return_station_id,
+            return_station_name,
+            distance,
+            duration
+    ):
+        self.departure_time = departure_time
+        self.return_time = return_time
+        self.departure_station_id = departure_station_id
+        self.departure_station_name = departure_station_name
+        self.return_station_id = return_station_id
+        self.return_station_name = return_station_name
+        self.distance = distance
+        self.duration = duration
+
+    @property
+    def duration(self):
+        return self._duration
+
+    @duration.setter
+    def duration(self, duration):
+        if isinstance(duration, str):
+            duration = int(duration)
+        if not isinstance(duration, int):
+            raise TypeError('duration must be an int or str')
+        if duration < 10:
+            raise ValueError('duration must be ≥ 10 seconds')
+        # duration can't be longer than 6 hours
+        if duration > 60 * 60 * 6:
+            raise ValueError(
+                'duration must be shorter than 6 hours'
+            )
+        self._duration = duration
+
+    @property
+    def distance(self):
+        return self._distance
+
+    @distance.setter
+    def distance(self, distance):
+        if isinstance(distance, str):
+            distance = float(distance)
+        if not isinstance(distance, float):
+            raise TypeError('distance must be a float')
+        if distance < 10:
+            raise ValueError('distance must be ≥ 10 meters')
+        if distance > 150_000:
+            raise ValueError('distance must be ≤ 150km')
+        self._distance = distance
+
+    @property
+    def return_station_name(self):
+        return self._return_station_name
+
+    @return_station_name.setter
+    def return_station_name(self, return_station_name):
+        if not isinstance(return_station_name, str):
+            raise TypeError('return_station_name must be str')
+        self._return_station_name = return_station_name
+
+    @property
+    def return_station_id(self):
+        return self._return_station_id
+
+    @return_station_id.setter
+    def return_station_id(self, return_station_id):
+        # These may start with a leading 0
+        if not isinstance(return_station_id, str):
+            raise TypeError('return_station_id must be str')
+        self._return_station_id = return_station_id
+
+
+    @property
+    def departure_station_name(self):
+        return self._departure_station_name
+
+    @departure_station_name.setter
+    def departure_station_name(self, departure_station_name):
+        if not isinstance(departure_station_name, str):
+            raise TypeError(
+                'departure_station_name must be a str'
+            )
+        self._departure_station_name = departure_station_name
+
+    @property
+    def departure_station_id(self):
+        return self._departure_station_id
+
+    @departure_station_id.setter
+    def departure_station_id(self, departure_station_id):
+        if not isinstance(departure_station_id, str):
+            raise TypeError(
+                'departure_station_id must be a str'
+            )
+        self._departure_station_id = \
+            departure_station_id
+
+    @property
+    def return_time(self):
+        return self._return_time
+
+    @return_time.setter
+    def return_time(self, return_time):
+        if isinstance(return_time, str):
+            return_time = datetime.fromisoformat(return_time)
+        if not isinstance(return_time, datetime):
+            raise TypeError('return_time must be a str')
+        self._return_time = return_time
+
+    @property
+    def departure_time(self):
+        return self._departure_time
+
+    @departure_time.setter
+    def departure_time(self, departure_time):
+        if isinstance(departure_time, str):
+            departure_time = \
+                datetime.fromisoformat(departure_time)
+        if not isinstance(departure_time, datetime):
+            raise TypeError('departure_time must be a str')
+        self._departure_time = departure_time
+
+    def to_dict(self):
+        return {
+            'departure_time': str(self.departure_time),
+            'return_time': str(self.return_time),
+            'departure_station_id': self.departure_station_id,
+            'departure_station_name': \
+            self.departure_station_name,
+            'return_station_id': self.return_station_id,
+            'return_station_name': self.return_station_name,
+            'distance': self.distance,
+            'duration': self.duration
+        }
+
+    @staticmethod
+    def from_dict(dct):
+        return Journey(**dct)
+
+    def __repr__(self):
+        return (
+            'Journey('
+            f'{str(self.departure_time)!r}, '
+            f'{str(self.return_time)!r}, '
+            f'{self.departure_station_id!r}, '
+            f'{self.departure_station_name!r}, '
+            f'{self.return_station_id!r}, '
+            f'{self.return_station_name!r}, '
+            f'{self.distance!r}, '
+            f'{self.duration!r}'
+            ')'
+        )
+
+def parse_entries(entries):
+    """Parse a list of str entries in csv form.
+
+    Return a tuple of successfully parsed entries, and entries which failed
+    parsing.
+
+    """
+    success, fail = [], []
+    for entry in entries:
+        io = StringIO(entry)
+        reader = csv.reader(io)
+        value = JourneyTuple._make(next(reader))
+        try:
+            success.append(Journey(*value).to_dict())
+        except Exception as e:
+            fail.append({ 'error': str(e), 'entry': entry })
+    return success, fail
+
+def download_and_filter(networkfiles):
+    """Download and process network files.
+
+    Download network files to current site.  Remove any duplicate
+    entries.  Filter bad entries.  Write result to site.  Return the
+    filepath.
+
+    """
+
+    resultpath = os.path.abspath(
+        os.path.join('.', 'journeys.json'),
+    )
+    if os.path.exists(resultpath):
+        print(f'{resultpath} exists, not downloading network files')
+        return resultpath
+
+    files = download_network_files(networkfiles)
+    collection = merge_entries(files)
+    print(f'{len(collection)} entries')
+    uniq = delete_dups(collection)
+    print(f'{len(uniq)} unique entries')
+    success, fails = parse_entries(uniq)
+    print(f'{len(success)} parseable and validated entries')
+    json.dump(fails, open('bad-entries.json', 'w'), indent=4)
+    json.dump(success, open('journeys.json', mode='w'), indent=4)
+    return 'journeys.json'
+
+def push_to_sql(journeypath):
+    """Load journeys from journeypath.
+
+    Write journeys to a postgresql database.
+
+    """
+    with open(journeypath, 'r') as fp:
+        journeys = [
+            Journey.from_dict(dct) for dct in json.load(fp)
+        ]
+
+    connection = psycopg2.connect(
+        database=psql_database,
+        user=psql_user,
+        password=psql_password,
+        host=psql_host,
+        port=psql_port
+    )
+
+    insert_statement = """
+INSERT INTO journey (
+    departure_time,
+    return_time,
+    departure_station_id,
+    departure_station_name,
+    return_station_id,
+    return_station_name,
+    distance,
+    duration
+)
+VALUES (
+    %(departure_time)s,
+    %(return_time)s,
+    %(departure_station_id)s,
+    %(departure_station_name)s,
+    %(return_station_id)s,
+    %(return_station_name)s,
+    %(distance)s,
+    %(duration)s
+)
+    """
+    with connection.cursor() as cursor:
+        for i, journey in enumerate(journeys):
+            dct = journey.to_dict()
+            cursor.execute(insert_statement, dct)
+            if i % 1000 == 0:
+                print(f'{i}/{len(journeys)}')
+    connection.commit()
+    print('done')
+    connection.close()
+
+def main():
+    journeypath = download_and_filter(journey_sources)
+    push_to_sql(journeypath)
+
+if __name__ == "__main__":
+    main()
 #+end_src
 
-#+header: :mkdirp yes :tangle hcbf/station.py
-#+header: :noweb yes
-#+begin_src python
-<<StationTypes>>
-#+end_src
+#+RESULTS:
 
 ** The backend
 
@@ -2259,62 +2678,9 @@ We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
-*** Installing
+*** requirements.txt
 
-# TODO provide source code
-To be able to run “the backend”, your site should have working Python interpreter.  You can download the sources for “the backend” once I make them available.
-
-Make sure you are at the root directory of “the backend” before running the following commands:
-
-**** Create a virtual environment
-
-#+header: :dir hcbb/
-#+begin_src sh
-python -m venv env
-#+end_src
-
-**** Install dependencies
-
-#+header: :dir hcbb/
-#+begin_src sh
-./env/bin/pip install -r requirements.txt
-#+end_src
-
-**** Run the app
-
-“The backend” is dependent on some external resources.  Handles to those resources are communicated via environment variables.
-
-Here’s a sample configuration file.  It is also provided as a part of “the backend” source as =sample.env=.
-
-#+header: :mkdirp yes :tangle hcbb/sample.env
-#+begin_src sh
-PSQL_DB=hcb
-PSQL_USER=postgres
-PSQL_PASS=postgres
-PSQL_HOST=localhost
-PSQL_PORT=5432
-HCBB_HOST=127.0.0.1
-HCBB_PORT=5433
-#+end_src
-
-You can load the variables into your current shell session with the following commands:
-
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
-
-*Note:* The app will crash if one of the environment variables is not properly set.  This is a convenient way to notify the user of a configuration error.
-
-After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
-
-#+begin_src sh
-./env/bin/python main.py
-#+end_src
-
-*** Requirements
-
-#+header: :mkdirp yes :tangle hcbb/requirements.txt
+#+header: :tangle hcb-backend/requirements.txt
 #+begin_src sh
 Flask
 flask_restful
@@ -2323,7 +2689,7 @@ psycopg2-binary
 
 *** db.py
 
-#+header: :mkdirp yes :tangle hcbb/db.py
+#+header: :tangle hcb-backend/db.py
 #+begin_src python
 import psycopg2
 from psycopg2.extensions import AsIs
@@ -2780,7 +3146,7 @@ class StationInfo:
 
 *** main.py
 
-#+header: :mkdirp yes :tangle hcbb/main.py
+#+header: :tangle hcb-backend/main.py
 #+begin_src python
 from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
@@ -2900,967 +3266,663 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
-** The database
-:PROPERTIES:
-:header-args: :mkdirp yes
-:END:
+** The frontend
 
-“The database” is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#declare-the-database][Declare the database]] for setup instructions.
+“The frontend” offers the following views:
++ A home page
++ [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
++ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station list]]
++ [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
 
-#+name: create-database-stmt
-#+header: :tangle hcb-setup-database/create-db.sql
-#+begin_src sql
-CREATE DATABASE hcb;
+It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
+
+*** Installing
+
+# TODO provide source code
+To be able to run “the frontend”, your machine should have a working Python interpreter or Docker.  You can download the sources for the front end once I make them available.
+
+Make sure you are at the root directory of the front end application before running the following commands:
+
+**** Create a virtual environment in the root directory
+
+#+begin_src sh
+python -m venv env
 #+end_src
 
-#+name: create-journey-stmt
-#+header: :tangle hcb-setup-database/create-tables.sql
-#+begin_src sql
-BEGIN;
+**** Install Python package dependencies
 
-CREATE TABLE journey (
-       id SERIAL PRIMARY KEY,
-       departure_time TIMESTAMP,
-       return_time TIMESTAMP,
-       departure_station_id TEXT,
-       departure_station_name TEXT,
-       return_station_id TEXT,
-       return_station_name TEXT,
-       distance FLOAT,
-       duration INTEGER
-);
-
--- We need to sort on the following columns
-CREATE INDEX distance_index
-ON journey(distance);
-
-CREATE INDEX duration_index
-ON journey(duration);
-
-CREATE INDEX departure_station_name_index
-ON journey(departure_station_name);
-
-CREATE INDEX return_station_name_index
-ON journey(return_station_name);
-
-COMMIT;
+#+begin_src sh
+./env/bin/pip install -r requirements.txt
 #+end_src
 
-#+name: create-station-stmt
-#+header: :tangle hcb-setup-database/create-tables.sql
-#+begin_src sql
-CREATE TABLE  station (
-       fid INTEGER PRIMARY KEY,
-       id TEXT,
-       finnish_name TEXT,
-       swedish_name TEXT,
-       english_name TEXT,
-       finnish_address TEXT,
-       swedish_address TEXT,
-       finnish_city TEXT,
-       swedish_city TEXT,
-       operator TEXT,
-       capacity INTEGER,
-       x FLOAT,
-       y FLOAT
-);
-#+end_src
+*** Package requirements
 
-*** Database preparation script
-
-A python script provided below prepares the database for use.
-
-**** requirements.txt
-
-#+header: :tangle hcb-setup-database/requirements.txt
+#+header: :tangle hcb-frontend/requirements.txt
 #+begin_src python
+Flask
 psycopg2-binary
-#+end_src
-
-**** main.py
-
-#+header: :noweb yes
-#+header: :tangle hcb-setup-database/main.py
-#+begin_src python
-import psycopg2
-import os
-
-psql_user = os.environ['PSQL_USERNAME']
-psql_pass = os.environ['PSQL_PASSWORD']
-psql_host = os.environ['PSQL_HOST']
-psql_port = os.environ['PSQL_PORT']
-
-
-connection = psycopg2.connect(
-    database='postgres',
-    user=psql_user,
-    password=psql_pass,
-    host=psql_host,
-    port=psql_port
-)
-connection\
-    .set_isolation_level(
-        psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
-    )
-with connection.cursor() as cursor:
-    cursor.execute(
-        """
-<<create-database-stmt>>
-        """
-    )
-
-connection.close()
-
-connection = psycopg2.connect(
-    database='hcb',
-    user=psql_user,
-    password=psql_pass,
-    host=psql_host,
-    port=psql_port
-)
-connection.autocommit = False
-
-with connection.cursor() as cursor:
-    cursor.execute(
-        """
-<<create-journey-stmt>>
-        """
-    )
-    cursor.execute(
-        """
-<<create-station-stmt>>
-        """
-    )
-
-print('OK')
-#+end_src
-
-** Data import
-:PROPERTIES:
-:header-args:python: :mkdirp yes
-:ID:       F2D438E2-A847-4C77-BB55-F7BEBB50A6B4
-:END:
-
-“Data import” reads journey and station data from the internet.  This component has two separate pieces:
-+ Journey import
-+ Station import
-
-*** Stations
-
-This is the part of “data import” that downloads station data.
-
-**** Running
-
-
-
-**** requirements.txt
-
-These are the external depe
-
-#+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
-#+begin_src text
 requests
-psycopg2-binary
 #+end_src
 
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
+*** The application entrypoint (main.py)
 
-#+header: :tangle hcbi/stations/sample.env :mkdirp yes
-#+begin_src sh
-HCBI_STATION_SOURCE='https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv'
-PSQL_DATABASE=hcb
-PSQL_USERNAME=postgres
-PSQL_PASSWORD=postgres
-PSQL_HOST=127.0.0.1
-PSQL_PORT=5432
-#+end_src
-
-#+header: :tangle hcbi/stations/main.py :mkdirp yes
+#+header: :tangle hcb-frontend/main.py
 #+begin_src python
-import os
-import requests
-from collections import namedtuple
-import csv
-import json
-import psycopg2
-
-def download_network_file(networkfile):
-    """Download a csv from the net, write to local site.
-
-    Return local file's path.
-
-    """
-
-    localpath = os.path.abspath(
-        os.path.join(
-            '.',
-            os.path.basename(networkfile)
-        )
-    )
-
-    if os.path.exists(localpath):
-        print(f'file {localpath} exists, not redownloading')
-    else:
-        print(f'downloading {networkfile}',
-              f'to {localpath}', sep='\n')
-
-        with open(localpath, 'w') as localfile:
-            response = requests.get(networkfile)
-            response.raise_for_status()
-            localfile.write(response.text)
-
-    return localpath
-
-StationTuple = namedtuple(
-    'StationTuple',
-    'fid,'
-    'id,'
-    'finnish_name,'
-    'swedish_name,'
-    'english_name,'
-    'finnish_address,'
-    'swedish_address,'
-    'finnish_city,'
-    'swedish_city,'
-    'operator,'
-    'capacity,'
-    'x,'
-    'y'
-)
-
-class Station:
-    def __init__(
-            self,
-            fid,
-            id,
-            finnish_name,
-            swedish_name,
-            english_name,
-            finnish_address,
-            swedish_address,
-            finnish_city,
-            swedish_city,
-            operator,
-            capacity,
-            x,
-            y
-    ):
-        self.fid = fid
-        self.id = id
-        self.finnish_name = finnish_name
-        self.swedish_name = swedish_name
-        self.english_name = english_name
-        self.finnish_address = finnish_address
-        self.swedish_address = swedish_address
-        self.finnish_city = finnish_city
-        self.swedish_city = swedish_city
-        self.operator = operator
-        self.capacity = capacity
-        self.x = x
-        self.y = y
-
-    @staticmethod
-    def from_dict(dct):
-        return Station(**dct)
-
-    def to_dict(self):
-        return {
-            'fid': self.fid,
-            'id': self.id,
-            'finnish_name': self.finnish_name,
-            'swedish_name': self.swedish_name,
-            'english_name': self.english_name,
-            'finnish_address': self.finnish_address,
-            'swedish_address': self.swedish_address,
-            'finnish_city': self.finnish_city,
-            'swedish_city': self.swedish_city,
-            'operator': self.operator,
-            'capacity': self.capacity,
-            'x': self.x,
-            'y': self.y
-        }
-
-    def __repr__(self):
-        return (
-            'Station('
-            f'{str(self.fid)!r}, '
-            f'{self.id!r}, '
-            f'{self.finnish_name!r}, '
-            f'{self.swedish_name!r}, '
-            f'{self.english_name!r}, '
-            f'{self.finnish_address!r}, '
-            f'{self.swedish_address!r}, '
-            f'{self.finnish_city!r},'
-            f'{self.swedish_city!r},'
-            f'{self.operator!r},'
-            f'{str(self.capacity)!r},'
-            f'{str(self.x)!r},'
-            f'{str(self.y)!r}'
-            ')'
-        )
-
-    @property
-    def y(self):
-        return self._y
-
-    @y.setter
-    def y(self, y):
-        if isinstance(y, str):
-            y = float(y)
-
-        if not isinstance(y, float):
-            raise TypeError('y must be a float')
-        self._y = y
-
-
-    @property
-    def x(self):
-        return self._x
-
-    @x.setter
-    def x(self, x):
-        if isinstance(x, str):
-            x = float(x)
-
-        if not isinstance(x, float):
-            raise TypeError('x must be a float')
-        self._x = x
-
-    @property
-    def capacity(self):
-        return self._capacity
-
-    @capacity.setter
-    def capacity(self, capacity):
-        if isinstance(capacity, str):
-            capacity = int(capacity)
-
-        if not isinstance(capacity, int):
-            raise TypeError('capacity must be an int')
-        self._capacity = capacity
-
-    @property
-    def operator(self):
-        return self._operator
-
-    @operator.setter
-    def operator(self, operator):
-        if isinstance(operator, str):
-            operator = operator.strip()
-            if len(operator) == 0:
-                operator = None
-
-        if not (operator is None
-                or isinstance(operator, str)):
-            raise TypeError('operator must be a str or None')
-        self._operator = operator
-
-
-    @property
-    def swedish_city(self):
-        return self._swedish_city
-
-    @swedish_city.setter
-    def swedish_city(self, swedish_city):
-        if isinstance(swedish_city, str):
-            swedish_city = swedish_city.strip()
-            if len(swedish_city) == 0:
-                swedish_city = None
-
-        if not (swedish_city is None
-                or isinstance(swedish_city, str)):
-            raise TypeError('swedish_city must be a str or None')
-        self._swedish_city = swedish_city
-
-
-    @property
-    def finnish_city(self):
-        return self._finnish_city
-
-    @finnish_city.setter
-    def finnish_city(self, finnish_city):
-        if isinstance(finnish_city, str):
-            finnish_city = finnish_city.strip()
-            if len(finnish_city) == 0:
-                finnish_city = None
-
-        if not (finnish_city is None
-                or isinstance(finnish_city, str)):
-            raise TypeError('finnish_city must be a str or None')
-        self._finnish_city = finnish_city
-
-    @property
-    def swedish_address(self):
-        return self._swedish_address
-
-    @swedish_address.setter
-    def swedish_address(self, swedish_address):
-        if isinstance(swedish_address, str):
-            swedish_address = swedish_address.strip()
-            if len(swedish_address) == 0:
-                swedish_address = None
-
-        if not (swedish_address is None
-                or isinstance(swedish_address, str)):
-            raise TypeError('swedish_address must be a str or None')
-        self._swedish_address = swedish_address
-
-
-    @property
-    def finnish_address(self):
-        return self._finnish_address
-
-    @finnish_address.setter
-    def finnish_address(self, finnish_address):
-        if isinstance(finnish_address, str):
-            finnish_address = finnish_address.strip()
-            if len(finnish_address) == 0:
-                finnish_address = None
-
-        if not (finnish_address is None
-                or isinstance(finnish_address, str)):
-            raise TypeError('finnish_address must be a str or None')
-        self._finnish_address = finnish_address
-
-    @property
-    def english_name(self):
-        return self._english_name
-
-    @english_name.setter
-    def english_name(self, english_name):
-        if isinstance(english_name, str):
-            english_name = english_name.strip()
-            if len(english_name) == 0:
-                english_name = None
-
-
-        if not (english_name is None
-                or isinstance(english_name, str)):
-            raise TypeError('english_name must be a str or None')
-        self._english_name = english_name
-
-    @property
-    def swedish_name(self):
-        return self._swedish_name
-
-    @swedish_name.setter
-    def swedish_name(self, swedish_name):
-        if isinstance(swedish_name, str):
-            swedish_name = swedish_name.strip()
-            if len(swedish_name) == 0:
-                swedish_name = None
-
-        if not (swedish_name is None
-                or isinstance(swedish_name, str)):
-            raise TypeError('swedish_name must be a str or None')
-        self._swedish_name = swedish_name
-
-    @property
-    def finnish_name(self):
-        return self._finnish_name
-
-    @finnish_name.setter
-    def finnish_name(self, finnish_name):
-        if isinstance(finnish_name, str):
-            finnish_name = finnish_name.strip()
-            if len(finnish_name) == 0:
-                finnish_name = None
-
-        if not (finnish_name is None
-                or isinstance(finnish_name, str)):
-            raise TypeError('finnish_name must be a str or None')
-        self._finnish_name = finnish_name
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, id):
-        if not isinstance(id, str):
-            raise TypeError('id must be a str')
-        self._id = id
-
-    @property
-    def fid(self):
-        return self._fid
-
-    @fid.setter
-    def fid(self, fid):
-        if isinstance(fid, str):
-            fid = int(fid)
-        if not isinstance(fid, int):
-            raise TypeError('fid must be an int')
-        self._fid = fid
-
-def parse_entries(filepath):
-    reader = csv.reader(open(filepath, newline=''))
-    # skip header
-    next(reader)
-    success, fail = [], []
-    for entry in reader:
-        tup = StationTuple._make(entry)
-        try:
-            success.append(Station(*tup).to_dict())
-        except Exception as e:
-            fail.append({ 'error': str(e), 'entry': entry })
-    return success, fail
-
-def download_and_filter(networkfile):
-    """Download and process station data into a json file.
-
-    Download the network files to site.  Return a filepath containing
-    downloaded data.
-
-    """
-
-    resultpath = os.path.abspath(
-        os.path.join('.', 'stations.json')
-    )
-
-    if os.path.exists(resultpath):
-        print(f'{resultpath} exists, not redownloading')
-        return resultpath
-    file = download_network_file(networkfile)
-    success, fails = parse_entries(file)
-    json.dump(success, open('stations.json', 'w'), indent=4)
-    json.dump(fails, open('bad-data.json', 'w'), indent=4)
-    return 'stations.json'
-
-
-def push_to_sql(stationpath):
-    with open(stationpath, 'r') as fp:
-        stations = [
-            Station.from_dict(dct) for dct in json.load(fp)
-        ]
-
-    connection = psycopg2.connect(
-        database=os.environ['PSQL_DATABASE'],
-        user=os.environ['PSQL_USERNAME'],
-        password=os.environ['PSQL_PASSWORD'],
-        host=os.environ['PSQL_HOST'],
-        port=os.environ['PSQL_PORT']
-    )
-
-    insert_statement = """
-INSERT INTO station (
-    fid,
-    id,
-    finnish_name,
-    swedish_name,
-    english_name,
-    finnish_address,
-    swedish_address,
-    finnish_city,
-    swedish_city,
-    operator,
-    capacity,
-    x,
-    y
-)
-VALUES (
-    %(fid)s,
-    %(id)s,
-    %(finnish_name)s,
-    %(swedish_name)s,
-    %(english_name)s,
-    %(finnish_address)s,
-    %(swedish_address)s,
-    %(finnish_city)s,
-    %(swedish_city)s,
-    %(operator)s,
-    %(capacity)s,
-    %(x)s,
-    %(y)s
-)
-    """
-    with connection.cursor() as cursor:
-        for station in stations:
-            dct = station.to_dict()
-            cursor.execute(insert_statement, dct)
-    connection.commit()
-    print('done')
-    connection.close()
-
-if __name__ == "__main__":
-    stationpath = download_and_filter(os.environ['HCBI_STATION_SOURCE'])
-    push_to_sql(stationpath)
-#+end_src
-
-*** Journeys
-
-Functional requirements for the data import are:
-+ Don’t import journeys that lasted < 10 seconds
-+ Don’t import journeys that covered < 10 meters
-
-Here are some additional requirements I defined for the import process:
-+ Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
-  + longer than 600 minutes
-  + longer than 150 kilometers
-+ Almost all journeys were duplicated in the CSV’s.  Delete any duplicates.
-
-#+header: :tangle hcbi/journeys/requirements.txt :mkdirp yes
-#+begin_src text
-requests
-psycopg2-binary
-#+end_src
-
-# TODO tell more about me
-
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
-
-#+header: :tangle hcbi/journeys/sample.env :mkdirp yes
-#+begin_src sh
-HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
-PSQL_DATABASE=hcb
-PSQL_USERNAME=postgres
-PSQL_PASSWORD=postgres
-PSQL_HOST=127.0.0.1
-PSQL_PORT=5432
-#+end_src
-
-#+header: :tangle hcbi/journeys/main.py :mkdirp yes
-#+begin_src python
+from flask import Flask, render_template, request, redirect, url_for
+from dataclasses import dataclass
 import requests
 import os
-from io import StringIO
-import csv
-from collections import namedtuple
-from datetime import datetime
-import json
-import psycopg2
 
-def download_network_files(networkfiles):
-    """Downloads csv's from the net and writes to site's disk.
+app = Flask(__name__)
 
-    networkfiles is a list of network files.
+backend_url = os.environ['HCBF_BACKEND_URL']
 
-    Returns local file paths if successful.
-
-    """
-
-    paths = []
-    for networkpath in networkfiles:
-        localpath = os.path.abspath(
-            os.path.join(
-                '.',
-                os.path.basename(networkpath),
-            )
-        )
-
-        if os.path.exists(localpath):
-            print(f'file {localpath} exists, so not redownloading')
-        else:
-            print(f'Downloading: {networkpath}',
-                  f'to: {localpath}', sep='\n')
-
-            with open(localpath, 'w') as localfile:
-                response = requests.get(networkpath)
-                response.raise_for_status()
-                localfile.write(response.text)
-        paths.append(localpath)
-    return paths
-
-def delete_dups(entries):
-    """Delete duplicates in a list of entries.
-
-    Returns a list containing only unique entries.
-
-    """
-    return list(set(entries))
-
-def merge_entries(filepaths):
-    """Merge entries from multiple csv filepaths into one.
-
-    Deletes a header line from each file.
-
-    """
-    entries = []
-    for path in filepaths:
-        with open(path, 'r') as fp:
-            next(fp)
-            for line in fp:
-                entries.append(line)
-    return entries
-
-JourneyTuple = namedtuple(
-        'JourneyTuple',
-        'departure_time,'
-        'return_time,'
-        'departure_station_id,'
-        'departure_station_name,'
-        'return_station_id,'
-        'return_station_name,'
-        'distance,'
-        'duration'
-    )
-
+@dataclass
 class Journey:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
 
-    def __init__(
-            self,
-            departure_time,
-            return_time,
-            departure_station_id,
-            departure_station_name,
-            return_station_id,
-            return_station_name,
-            distance,
-            duration
-    ):
-        self.departure_time = departure_time
-        self.return_time = return_time
-        self.departure_station_id = departure_station_id
-        self.departure_station_name = departure_station_name
-        self.return_station_id = return_station_id
-        self.return_station_name = return_station_name
-        self.distance = distance
-        self.duration = duration
+@app.route('/journeys')
+def journeys():
+    page = int(request.args.get('page', '1'))
+    search_term = request.args.get('search', '')
+    order_by = request.args.get('order_by')
+    direction = request.args.get('direction')
 
-    @property
-    def duration(self):
-        return self._duration
+    url = f'{backend_url}/journeys?page={page}'
 
-    @duration.setter
-    def duration(self, duration):
-        if isinstance(duration, str):
-            duration = int(duration)
-        if not isinstance(duration, int):
-            raise TypeError('duration must be an int or str')
-        if duration < 10:
-            raise ValueError('duration must be ≥ 10 seconds')
-        # duration can't be longer than 6 hours
-        if duration > 60 * 60 * 6:
-            raise ValueError(
-                'duration must be shorter than 6 hours'
-            )
-        self._duration = duration
+    if search_term:
+        url = f'{url}&search={search_term}'
+    if order_by:
+        url = f'{url}&order_by={order_by}'
+    if direction:
+        url = f'{url}&direction={direction}'
 
-    @property
-    def distance(self):
-        return self._distance
+    resp = requests.get(url)
 
-    @distance.setter
-    def distance(self, distance):
-        if isinstance(distance, str):
-            distance = float(distance)
-        if not isinstance(distance, float):
-            raise TypeError('distance must be a float')
-        if distance < 10:
-            raise ValueError('distance must be ≥ 10 meters')
-        if distance > 150_000:
-            raise ValueError('distance must be ≤ 150km')
-        self._distance = distance
+    resp.raise_for_status()
 
-    @property
-    def return_station_name(self):
-        return self._return_station_name
+    journeys = [Journey(**journey) for journey in resp.json()]
 
-    @return_station_name.setter
-    def return_station_name(self, return_station_name):
-        if not isinstance(return_station_name, str):
-            raise TypeError('return_station_name must be str')
-        self._return_station_name = return_station_name
-
-    @property
-    def return_station_id(self):
-        return self._return_station_id
-
-    @return_station_id.setter
-    def return_station_id(self, return_station_id):
-        # These may start with a leading 0
-        if not isinstance(return_station_id, str):
-            raise TypeError('return_station_id must be str')
-        self._return_station_id = return_station_id
-
-
-    @property
-    def departure_station_name(self):
-        return self._departure_station_name
-
-    @departure_station_name.setter
-    def departure_station_name(self, departure_station_name):
-        if not isinstance(departure_station_name, str):
-            raise TypeError(
-                'departure_station_name must be a str'
-            )
-        self._departure_station_name = departure_station_name
-
-    @property
-    def departure_station_id(self):
-        return self._departure_station_id
-
-    @departure_station_id.setter
-    def departure_station_id(self, departure_station_id):
-        if not isinstance(departure_station_id, str):
-            raise TypeError(
-                'departure_station_id must be a str'
-            )
-        self._departure_station_id = \
-            departure_station_id
-
-    @property
-    def return_time(self):
-        return self._return_time
-
-    @return_time.setter
-    def return_time(self, return_time):
-        if isinstance(return_time, str):
-            return_time = datetime.fromisoformat(return_time)
-        if not isinstance(return_time, datetime):
-            raise TypeError('return_time must be a str')
-        self._return_time = return_time
-
-    @property
-    def departure_time(self):
-        return self._departure_time
-
-    @departure_time.setter
-    def departure_time(self, departure_time):
-        if isinstance(departure_time, str):
-            departure_time = \
-                datetime.fromisoformat(departure_time)
-        if not isinstance(departure_time, datetime):
-            raise TypeError('departure_time must be a str')
-        self._departure_time = departure_time
-
-    def to_dict(self):
-        return {
-            'departure_time': str(self.departure_time),
-            'return_time': str(self.return_time),
-            'departure_station_id': self.departure_station_id,
-            'departure_station_name': \
-            self.departure_station_name,
-            'return_station_id': self.return_station_id,
-            'return_station_name': self.return_station_name,
-            'distance': self.distance,
-            'duration': self.duration
-        }
-
-    @staticmethod
-    def from_dict(dct):
-        return Journey(**dct)
-
-    def __repr__(self):
-        return (
-            'Journey('
-            f'{str(self.departure_time)!r}, '
-            f'{str(self.return_time)!r}, '
-            f'{self.departure_station_id!r}, '
-            f'{self.departure_station_name!r}, '
-            f'{self.return_station_id!r}, '
-            f'{self.return_station_name!r}, '
-            f'{self.distance!r}, '
-            f'{self.duration!r}'
-            ')'
-        )
-
-def parse_entries(entries):
-    """Parse a list of str entries in csv form.
-
-    Return a tuple of successfully parsed entries, and entries which failed
-    parsing.
-
-    """
-    success, fail = [], []
-    for entry in entries:
-        io = StringIO(entry)
-        reader = csv.reader(io)
-        value = JourneyTuple._make(next(reader))
-        try:
-            success.append(Journey(*value).to_dict())
-        except Exception as e:
-            fail.append({ 'error': str(e), 'entry': entry })
-    return success, fail
-
-def download_and_filter(networkfiles):
-    """Download and process network files.
-
-    Download network files to current site.  Remove any duplicate
-    entries.  Filter bad entries.  Write result to site.  Return the
-    filepath.
-
-    """
-
-    resultpath = os.path.abspath(
-        os.path.join('.', 'journeys.json'),
-    )
-    if os.path.exists(resultpath):
-        print(f'{resultpath} exists, not downloading network files')
-        return resultpath
-
-    files = download_network_files(networkfiles)
-    collection = merge_entries(files)
-    print(f'{len(collection)} entries')
-    uniq = delete_dups(collection)
-    print(f'{len(uniq)} unique entries')
-    success, fails = parse_entries(uniq)
-    print(f'{len(success)} parseable and validated entries')
-    json.dump(fails, open('bad-entries.json', 'w'), indent=4)
-    json.dump(success, open('journeys.json', mode='w'), indent=4)
-    return 'journeys.json'
-
-def push_to_sql(journeypath):
-    """Load journeys from journeypath.
-
-    Write journeys to a postgresql database.
-
-    """
-    with open(journeypath, 'r') as fp:
-        journeys = [
-            Journey.from_dict(dct) for dct in json.load(fp)
-        ]
-
-    connection = psycopg2.connect(
-        database=os.environ['PSQL_DATABASE'],
-        user=os.environ['PSQL_USERNAME'],
-        password=os.environ['PSQL_PASSWORD'],
-        host=os.environ['PSQL_HOST'],
-        port=os.environ['PSQL_PORT']
+    return render_template(
+        'journeys.html.j2',
+        journeys=journeys,
+        previous_page=max(page - 1, 1),
+        next_page=page + 1,
+        page=page,
+        search_term=search_term,
+        order_by=order_by,
+        direction=direction
     )
 
-    insert_statement = """
-INSERT INTO journey (
-    departure_time,
-    return_time,
-    departure_station_id,
-    departure_station_name,
-    return_station_id,
-    return_station_name,
-    distance,
-    duration
-)
-VALUES (
-    %(departure_time)s,
-    %(return_time)s,
-    %(departure_station_id)s,
-    %(departure_station_name)s,
-    %(return_station_id)s,
-    %(return_station_name)s,
-    %(distance)s,
-    %(duration)s
-)
-    """
-    with connection.cursor() as cursor:
-        for i, journey in enumerate(journeys):
-            dct = journey.to_dict()
-            cursor.execute(insert_statement, dct)
-            if i % 1000 == 0:
-                print(f'{i}/{len(journeys)}')
-    connection.commit()
-    print('done')
-    connection.close()
+@dataclass
+class Station:
+    id: int
+    name: str
+    address: str
 
+@app.route('/stations')
+def stations():
+    page = max(1, int(request.args.get('page', '1')))
+    search_term = request.args.get('search', '')
+
+    url = f'{backend_url}/stations?page={page}'
+
+    if search_term:
+        url = f'{url}&search={search_term}'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    stations = [Station(**station) for station in resp.json()]
+
+    previous_page = None if page == 1 else page - 1
+    next_page = page + 1
+    return render_template(
+        'stations.html.j2',
+        stations=stations,
+        previous_page=previous_page,
+        page=page,
+        next_page=next_page,
+        search_term=search_term
+    )
+
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destionations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
+
+
+@app.route('/station/<int:station_id>')
+def station(station_id):
+    months = request.args.getlist('month')
+    if months == []:
+        months = ('5', '6', '7')
+
+    months = tuple(map(int, months))
+    url = f'{backend_url}/stations/{station_id}?'
+
+    for month in months:
+        url = f'{url}month={month}&'
+
+    response = requests.get(url)
+    response.raise_for_status()
+    data = response.json()
+    station_info = StationInfo(
+        name=data['name'],
+        address=data['address'],
+        x=data['x'],
+        y=data['y'],
+        journeys_started_here=data['journeys_started_here'],
+        journeys_ended_here=data['journeys_ended_here'],
+        average_distance_started_here=\
+        data['average_distance_started_here'],
+        average_distance_ended_here=\
+        data['average_distance_ended_here'],
+        top_destionations=[StationRelationInfo(**value) for value in data['top_destinations']],
+        top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
+    )
+
+    return render_template(
+        'station.html.j2',
+        station=station_info,
+        months=months
+    )
+
+@app.route('/random-station')
+def random_station():
+    url = f'{backend_url}/random-station'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    station_id = resp.json()
+    return redirect(
+        url_for('station', station_id=station_id)
+    )
+
+@app.route('/')
+def home():
+    return render_template('home.html.j2')
 
 if __name__ == "__main__":
-    journeypath = download_and_filter(os.environ['HCBI_SOURCE_FILES'].split(' '))
-    push_to_sql(journeypath)
+    host = os.environ['HCBF_HOST']
+    port = os.environ['HCBF_PORT']
+    app.run(host=host, port=port, debug=True)
 #+end_src
 
-#+RESULTS:
+#+header: :tangle hcb-frontend/templates/base.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head_plus %}
+    {% endblock head_plus %}
+    <title>
+      {% block title %}
+        Helsinki city bikes
+      {% endblock title %}
+    </title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+  </head>
+  <body>
+    {% block navbar %}
+      <nav class="navbar navbar-expand-lg bg-light">
+        <div class="container-fluid">
+          <a class="navbar-brand" href="#">Helsinki City Bikes</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('home') }}">Home</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    {% endblock navbar %}
+    {% block content %}
+      <p>Implement the content block</p>
+    {% endblock content %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+
+    {% block body_plus %}
+    {% endblock body_plus %}
+  </body>
+</html>
+#+end_src
+
+#+header: :tangle hcb-frontend/templates/home.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <p class="lead mt-5">
+          Pick a table category from the top nav bar, or...
+        </p>
+      </div>
+    </div>
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+#+end_src
+
+#+header: :tangle hcb-frontend/templates/journeys.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block head_plus %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+{% endblock %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Journeys</h1>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <form>
+          <div class="input-group" id="form">
+            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>
+                  {% if order_by == 'departure_station' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='descending') }}">Departure station</a>
+                      <i class="bi-sort-alpha-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
+                      <i class="bi-sort-alpha-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'return_station' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='descending') }}">Return station</a>
+                      <i class="bi-sort-alpha-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
+                      <i class="bi-sort-alpha-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'distance' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='descending') }}">Covered distance (km)</a>
+                      <i class="bi-sort-numeric-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
+                      <i class="bi-sort-numeric-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'duration' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='descending') }}">Duration (m)</a>
+                      <i class="bi-sort-numeric-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
+                      <i class="bi-sort-numeric-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
+                  {% endif %}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for journey in journeys %}
+                <tr>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.departure_station_id) }}">
+                      {{ journey.departure_station_name }}
+                    </a>
+                  </td>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.return_station_id) }}">
+                      {{ journey.return_station_name }}
+                    </a>
+                  </td>
+                  <td>{{ journey.distance | round(1) }}</td>
+                  <td>{{ journey.duration  }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('journeys', page=previous_page, search=search_term, order_by=order_by, direction=direction) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('journeys', page=next_page, search=search_term, order_by=order_by, direction=direction) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+#+end_src
+
+#+header: :tangle hcb-frontend/templates/stations.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Stations</h1>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <form>
+          <div class="input-group">
+            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for station in stations %}
+                <tr>
+                  <td>
+                    <a href="{{ url_for('station', station_id=station.id) }}">
+                      {{ station.name }}
+                    </a>
+                  </td>
+                  <td>{{ station.address }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('stations', page=previous_page, search=search_term) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('stations', page=next_page, search=search_term) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+#+end_src
+
+#+header: :tangle hcb-frontend/templates/station.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12 col-md-6">
+        <div class="row">
+          <div class="col">
+            <h3>Station</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.name }}</td>
+                  <td>{{ station.address }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <div class="row">
+              <div class="col">
+                <h3>Details</h3>
+              </div>
+            </div>
+            <form>
+              <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
+                     {% if 5 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="may">May</label>
+
+              <input type="checkbox" class="btn-check" id="june" autocomplete="off" name="month" value="6"
+                     {% if 6 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="june">June</label>
+
+              <input type="checkbox" class="btn-check" id="july" autocomplete="off" name="month" value="7"
+                     {% if 7 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="july">July</label>
+
+              <button type="submit" class="btn btn-primary">Recompute</button>
+            </form>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Journeys started here</th>
+                  <th>Journeys ended here</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.journeys_started_here }}</td>
+                  <td>{{ station.journeys_ended_here }}</td>
+                </tr>
+              </tbody>
+              <thead>
+                <tr>
+                  <th>Average journey from here (m)</th>
+                  <th>Average journey to here (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.average_distance_started_here }}</td>
+                  <td>{{ station.average_distance_ended_here }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top destinations</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in station.top_destinations %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top origins</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in station['top_origins'] %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div id="osm-map"></div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+
+{% block body_plus %}
+  <script>
+    x = {{ station.x }}
+    y = {{ station.y }}
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+  <script src="{{ url_for('static', filename="osm.js") }}"></script>
+{% endblock body_plus %}
+#+end_src
+
+#+header: :tangle hcb-frontend/static/osm.js
+#+begin_src js
+// Where you want to render the map.
+var element = document.getElementById('osm-map');
+
+// Height has to be set. You can do this in CSS too.
+element.style = 'height:600px;'
+
+// Create Leaflet map on map element.
+var map = L.map(element);
+
+// Add OSM tile layer to the Leaflet map.
+L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+var target = L.latLng(y, x);
+
+map.setView(target, 13);
+
+L.marker(target)
+  .addTo(map);
+#+end_src
+
+#+header: :tangle hcb-frontend/static/style.css
+#+begin_src css
+
+#+end_src
