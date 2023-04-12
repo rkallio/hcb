@@ -198,56 +198,55 @@ To verify the backend is able to connect to psql and serve requests, try perform
 + =/stations=
 + =/random-station=
 
-#+header: :wrap src js
 #+begin_src http :pretty
 GET localhost:5433/journeys?page_size=5 HTTP/1.1
 #+end_src
 
 #+RESULTS:
-#+begin_src js
+#+begin_example
 [
   {
-    "departure_station_id": 145,
-    "departure_station_name": "Cygnaeuksenkatu",
-    "return_station_id": 181,
-    "return_station_name": "Hietaniemenkatu",
-    "distance": 2.203,
-    "duration": 15
+    "departure_station_id": 171,
+    "departure_station_name": "Länsisatamankatu",
+    "return_station_id": 184,
+    "return_station_name": "Rajasaarentie",
+    "distance": 4.0280000000000005,
+    "duration": 23
   },
   {
-    "departure_station_id": 323,
-    "departure_station_name": "Asentajanpuisto",
-    "return_station_id": 197,
-    "return_station_name": "Kustaankatu",
-    "distance": 5.666,
+    "departure_station_id": 159,
+    "departure_station_name": "Annankatu",
+    "return_station_id": 119,
+    "return_station_name": "Erottajan aukio",
+    "distance": 0.555,
+    "duration": 3
+  },
+  {
+    "departure_station_id": 297,
+    "departure_station_name": "Katariina Saksilaisen katu",
+    "return_station_id": 245,
+    "return_station_name": "Arabian kauppakeskus",
+    "distance": 2.2560000000000002,
     "duration": 21
-  },
-  {
-    "departure_station_id": 197,
-    "departure_station_name": "Kustaankatu",
-    "return_station_id": 242,
-    "return_station_name": "Haukilahdenkatu",
-    "distance": 1.6580000000000001,
-    "duration": 6
-  },
-  {
-    "departure_station_id": 130,
-    "departure_station_name": "Kaisaniemenpuisto",
-    "return_station_id": 224,
-    "return_station_name": "Linnanmäki",
-    "distance": 2.668,
-    "duration": 12
   },
   {
     "departure_station_id": 234,
     "departure_station_name": "Kalasatama (M)",
-    "return_station_id": 244,
-    "return_station_name": "Sofianlehdonkatu",
-    "distance": 2.548,
-    "duration": 8
+    "return_station_id": 242,
+    "return_station_name": "Haukilahdenkatu",
+    "distance": 1.431,
+    "duration": 7
+  },
+  {
+    "departure_station_id": 146,
+    "departure_station_name": "Apollonkatu",
+    "return_station_id": 189,
+    "return_station_name": "Uimastadion",
+    "distance": 1.929,
+    "duration": 9
   }
 ]
-#+end_src
+#+end_example
 
 Here are the =Dockerfile= and =sample.env= file, as a reference.
 
