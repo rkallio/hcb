@@ -11,6 +11,7 @@
   - [[#populate-the-database][Populate the database]]
   - [[#run-up-the-backend][Run up the backend]]
   - [[#run-up-the-frontend][Run up the frontend]]
+- [[#cleaning-up][Cleaning up]]
 - [[#the-assignment][The assignment]]
   - [[#the-exercise][The exercise]]
   - [[#stuff-to-do][Stuff to do]]
@@ -36,9 +37,6 @@
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
     - [[#journeys-csvs][Journeys CSVs]]
-    - [[#we-want-statistics][We want statistics]]
-    - [[#a-random-station][A random station]]
-    - [[#top-5-destinations][Top 5 destinations]]
     - [[#station-csv][Station CSV]]
   - [[#write-the-frontend][Write the frontend]]
   - [[#write-data-import][Write data import]]
@@ -52,7 +50,7 @@
     - [[#database-prep-script][Database prep script]]
   - [[#the-data-import][The data import]]
     - [[#stations][Stations]]
-    - [[#journeys][Journeys]]
+    - [[#journeys-data-import][Journeys data import]]
   - [[#the-backend][The backend]]
     - [[#requirementstxt][requirements.txt]]
     - [[#dbpy][db.py]]
@@ -64,7 +62,13 @@
 
 * Running locally with Docker
 
-Here are short instructions to setting up the app locally.
+Here are short instructions for setting up the app locally.
+
+Prerequisites:
++ A browser and an archive extractor, or =curl= and =tar=
++ A container engine like Docker.  The engine's VM should have access to at least 4GB of memory.
+
+Note that I used [[https://podman.io][Podman]] instead of Docker as the container engine.  I know from experience that they don't quite share the same feature set.  If you run into issues, try running the commands with podman, which is very easy to install on a Linux host.
 
 ** Download and extract the source tarballs
 
@@ -112,7 +116,7 @@ docker run --rm --tty \
        hcb-setup-database
 #+end_src
 
-Here is the Dockerfile and the sample.env files for reference.
+Here is the =Dockerfile= and the =sample.env= files for reference.
 
 #+header: :tangle hcb-setup-database/Dockerfile
 #+begin_src dockerfile
@@ -134,7 +138,7 @@ PSQL_PORT=5432
 
 ** Populate the database
 
-This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to be enough.  If you get a =Killed= message, increase memory allocated to Docker to 4096MB.
+This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get a =Killed= while processing, increase Docker's allocated memory to 4096MB.
 
 #+begin_src sh
 cd hcb-data-import
@@ -172,7 +176,7 @@ PSQL_PORT=5432
 
 ** Run up the backend
 
-The backend is untarred into hcb-backend.  Again, there is a Dockerfile and a sample env provided.  Here's how you would build the container and run it:
+[[#the-backend][The backend]] is untarred to =hcb-backend=.  Again, there is a =Dockerfile= and a =sample.env= provided.  Here's how you would build the container and run it:
 
 #+begin_src sh
 cd hcb-backend
@@ -267,7 +271,7 @@ HCBB_PORT=5433
 
 ** Run up the frontend
 
-The frontend is untarred to =hcb-frontend=.  Once again, the directory contains a Dockerfile.  Build and run it.
+[[#the-frontend][The frontend]] is untarred to =hcb-frontend=.  Build and run it.
 
 #+begin_src sh
 cd hcb-frontend
@@ -301,6 +305,16 @@ CMD python main.py
 HCBF_HOST=0.0.0.0
 HCBF_PORT=5434
 HCBF_BACKEND_URL=http://hcb-backend:5433
+#+end_src
+
+* Cleaning up
+
+Run the following commands to remove docker images, containers and networks related to this project:
+
+#+begin_src sh
+docker kill hcb-frontend hcb-backend postgres-server
+docker network rm hcb
+docker rmi hcb-frontend hcb-backend hcb-data-import hcb-setup-database postgres:latest python:3.11-slim
 #+end_src
 
 * The assignment
@@ -344,217 +358,134 @@ Implemented as part of [[#the-data-import][The data import]].
 
 ***** Validate data before importing
 
-Data is validated according to the following rules:
-+
+Implemented as part of [[#journeys-data-import][Journeys data import]].  See the validation rules defined [[#journeys-data-import][here]].
 
 ***** Don't import journeys that lasted for less than ten seconds
 
+Implemented as part of [[#journeys-data-import][Journeys data import]].
+
 ***** Don't import journeys that covered distances shorter than 10 meters
 
+Implemented as part of [[#journeys-data-import][Journeys data import]].
+
 *** Journey list view
-:PROPERTIES:
-:ID:       3021535E-D457-4E21-B296-4035BCE2E439
-:END:
 
 **** Recommended
 
 ***** List journeys
-:PROPERTIES:
-:ID:       B4893559-616F-40BF-921F-7D317A7A3233
-:END:
 
 If you don't implement pagination, use some hard-coded limit for the list length because showing several million rows would make any browser choke
 
+Implemented both in the frontend and the backend.  Implementation includes pagination.
+
 ***** For each journey show departure and return stations, covered distance in kilometers and duration in minutes
-:PROPERTIES:
-:ID:       9C02BABD-4912-400F-91BE-7ACE4403DE58
-:END:
+
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       7DC9F915-F042-4FD0-8B35-F1CB41822661
-:END:
 
 ***** Pagination
-:PROPERTIES:
-:ID:       C3F75C9E-BF89-4BA2-8FF9-6A0834A5FD9C
-:END:
+
+Implemented.
 
 ***** Ordering per column
-:PROPERTIES:
-:ID:       E0C31B66-06FB-41CE-997D-B0C7263C453C
-:END:
+
+Implemented ordering by departure station name, return station name, distance covered, and time, in ascending and descending order.
 
 ***** Searching
-:PROPERTIES:
-:ID:       46BC5278-F5AE-4111-81CE-FABBBBDF2CCC
-:END:
+
+Implemented searching by departure- and return station names.
 
 ***** Filtering
-:PROPERTIES:
-:ID:       E59913C7-F2CA-46EB-BDF2-F6DDC2DEFCDE
-:END:
+
+Not implemented.
 
 *** Station list
-:PROPERTIES:
-:ID:       89C5ADDA-6E9D-485B-877F-2A47D765789A
-:END:
 
 **** Recommended
-:PROPERTIES:
-:ID:       560F2659-2E0A-43CC-B784-071D774D9305
-:END:
 
 ***** List all the stations
-:PROPERTIES:
-:ID:       2E7F4555-4A42-4A5F-96CD-B917DED9F27F
-:END:
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       501D1AFF-D0DE-4C8F-9557-CFF81447EA1C
-:END:
 
 ***** Pagination
-:PROPERTIES:
-:ID:       57A6951C-D5B4-4ABE-90CC-9737DB955055
-:END:
+
+Implemented.
 
 ***** Searching
-:PROPERTIES:
-:ID:       1A851198-298A-417B-9E16-091C0F722A69
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
 
-#+begin_src sql
-\d+ station
-#+end_src
-
-#+RESULTS:
-| Table "public.station"                  |                  |           |          |         |          |             |              |             |
-|-----------------------------------------+------------------+-----------+----------+---------+----------+-------------+--------------+-------------|
-| Column                                  | Type             | Collation | Nullable | Default | Storage  | Compression | Stats target | Description |
-| fid                                     | integer          |           | not null |         | plain    |             |              |             |
-| id                                      | text             |           |          |         | extended |             |              |             |
-| finnish_name                            | text             |           |          |         | extended |             |              |             |
-| swedish_name                            | text             |           |          |         | extended |             |              |             |
-| english_name                            | text             |           |          |         | extended |             |              |             |
-| finnish_address                         | text             |           |          |         | extended |             |              |             |
-| swedish_address                         | text             |           |          |         | extended |             |              |             |
-| finnish_city                            | text             |           |          |         | extended |             |              |             |
-| swedish_city                            | text             |           |          |         | extended |             |              |             |
-| operator                                | text             |           |          |         | extended |             |              |             |
-| capacity                                | integer          |           |          |         | plain    |             |              |             |
-| x                                       | double precision |           |          |         | plain    |             |              |             |
-| y                                       | double precision |           |          |         | plain    |             |              |             |
-| Indexes:                                |                  |           |          |         |          |             |              |             |
-| "station_pkey" PRIMARY KEY, btree (fid) |                  |           |          |         |          |             |              |             |
-| Access method: heap                     |                  |           |          |         |          |             |              |             |
-
-#+begin_src sql
-SELECT english_name, finnish_address
-FROM station
-WHERE    english_name    ILIKE '%kannel%'
-      OR finnish_address ILIKE '%kannel%'
-LIMIT 10;
-#+end_src
-
-#+RESULTS:
-| english_name               | finnish_address |
-|----------------------------+-----------------|
-| Kannelmäen liikuntapuisto  | Kanneltie 12    |
-| Kannelmäki railway station | Sitratori 2     |
-
+Implemented searching by station name and address.
 
 *** Single station view
-:PROPERTIES:
-:ID:       8B7AC0C5-E098-401C-936F-9B8AA51B8AB4
-:END:
 
 **** Recommended
-:PROPERTIES:
-:ID:       3FE0134F-3D02-44E6-B340-28C7100F2AEA
-:END:
 
 ***** Station name
-:PROPERTIES:
-:ID:       A85600E0-7208-4CA2-98A5-C7B4AB286607
-:END:
+
+Implemented.
 
 ***** Station address
-:PROPERTIES:
-:ID:       EDD7F112-7D78-4308-AEBB-EBB652CF1E19
-:END:
+
+Implemented.
 
 ***** Total number of journeys starting from the station
-:PROPERTIES:
-:ID:       8DC3256B-CE71-4C5D-98F8-620F56EA6A4D
-:END:
+
+Implemented.
 
 ***** Total number of journeys ending at the station
-:PROPERTIES:
-:ID:       BF6F35A7-ADFF-473D-9A84-03CA5A7EB6A3
-:END:
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       54FF5C21-84E5-452A-A254-1038B45C98B0
-:END:
 
 ***** Station location on the map
-:PROPERTIES:
-:ID:       32E8AD8C-7075-41E2-857A-3028E260F2A0
-:END:
+
+Implemented using [[https://www.openstreetmap.org/][openstreetmap]].
 
 ***** The average distance of a journey starting from the station
-:PROPERTIES:
-:ID:       BE865AC1-498E-4211-B2E3-D0E6E5748D14
-:END:
+
+Implemented.
 
 ***** The average distance of a journey ending at the station
-:PROPERTIES:
-:ID:       9CE27BCA-212A-4652-926E-0A19EF9B41B4
-:END:
+
+Implemented.
 
 ***** Top 5 most popular return stations for journeys starting from the station
-:PROPERTIES:
-:ID:       D42F365F-AF8D-42DC-8BD9-569C7CE7A633
-:END:
+
+Implemented.
 
 ***** Top 5 most popular departure stations for journeys ending at the station
-:PROPERTIES:
-:ID:       3A44653C-D103-493F-B9BC-E5FD1114E582
-:END:
+
+Implemented.
 
 ***** Ability to filter all the calculations per month
-:PROPERTIES:
-:ID:       FC0D1A36-1AC4-4062-BE61-778E63EEAB71
-:END:
+
+Implemented.
 
 *** Surprise us with
 
 **** Endpoints to store new journeys data or new bicycle stations
-:PROPERTIES:
-:ID:       0E3E7F1C-06BC-4E1D-BD78-070E8C6318BC
-:END:
+
+Not implemented.
 
 **** Running backend in Docker
+
+Implemented.
 
 **** Running backend in Cloud
 
 **** Implement E2E tests
 
 **** Create UI for adding journeys or bicycle stations
-:PROPERTIES:
-:ID:       4105F08E-4AE4-4A2F-BB4F-EC9C9F9B275B
-:END:
+
+Not implemented.
 
 * Resources
 
 ** Assignment, requirements specification
-:PROPERTIES:
-:ID:       40872028-9B66-4C60-BCEA-0F8D427CBF74
-:END:
 
 [[https://github.com/solita/dev-academy-2023-exercise]]
 
@@ -572,7 +503,6 @@ LIMIT 10;
 
 *** Journey dataset
 
-Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]].
 
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv]]
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv]]
@@ -590,9 +520,6 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 [[mailto:pauliinahovila@solita.fi]]
 
 *** Dataset contacts
-:PROPERTIES:
-:ID:       749A080A-801E-4BB1-A8B6-6F4FAC42BE4F
-:END:
 
 + [[mailto:heikki.hamalainen@solita.fi]]
 + [[mailto:meri.merkkiniemi@solita.fi]]
@@ -619,10 +546,6 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :END:
 
 ** Explore the dataset
-:PROPERTIES:
-:header-args: :noweb yes
-:ID:       8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A
-:END:
 :LOGBOOK:
 CLOCK: [2023-04-07 Fri 20:40]--[2023-04-07 Fri 21:00] =>  0:20
 CLOCK: [2023-04-07 Fri 19:44]--[2023-04-07 Fri 19:46] =>  0:02
@@ -638,1010 +561,11 @@ CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
 CLOCK: [2023-04-08 Sat 21:39]--[2023-04-08 Sat 22:36] =>  0:57
 CLOCK: [2023-04-08 Sat 00:58]--[2023-04-08 Sat 01:05] =>  0:07
 :END:
-The journey dataset consists of three files, one file for the data of one month.
-
-CSV header defines the following fields:
-+ Departure
-+ Return
-+ Departure station id
-+ Departure station name
-+ Return station id
-+ Return station name
-+ Covered distance (m)
-+ Duration (sec)
-
-AKA this thing:
-
-#+name: JourneyRecordTuple
-#+begin_src python
-from collections import namedtuple
-
-JourneyRecord = namedtuple(
-    'JourneyRecord',
-    'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration'
-)
-#+end_src
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-
-f = '2021-05.csv'
-
-<<JourneyRecordTuple>>
-
-reader = csv.reader(open(f, 'r'))
-# skip the header
-next(reader)
-print(list(map(JourneyRecord._make, reader))[1:2])
-#+end_src
-
-#+RESULTS[2684a09d41a676953da92f9c5450e4deecae00a0]:
-: [JourneyRecord(departure_time='2021-05-31T23:56:59', return_time='2021-06-01T00:07:14', departure_id='082', departure_name='Töölöntulli', return_id='113', return_name='Pasilan asema', distance='1870', duration='611')]
-
-Departure seems to be a timestamp without a timezone, same for Return.  I'll just assume this is in UTC and move on.
-
-Departure station id and return station id seem to strings, because they may start with a 0.  +Distance and duration are ints+.  Only duration is always an int, distance may be the empty string, or a float.  Let's set the distance to 0 if it is represented as an empty string.  Departure and return stations names seem to be simple strings.
-
-Here's a parser to check if I'm right.
-
-#+name: JourneyParser
-#+begin_src python
-<<JourneyRecordTuple>>
-
-from datetime import datetime
-
-
-class Journey:
-    def __init__(
-            self,
-            departure_time,
-            return_time,
-            departure_station_id,
-            departure_station_name,
-            return_station_id,
-            return_station_name,
-            distance,
-            duration
-    ):
-        self.departure_time = departure_time
-        self.return_time = return_time
-        self.departure_station_id = departure_station_id
-        self.departure_station_name = departure_station_name
-        self.return_station_id = return_station_id
-        self.return_station_name = return_station_name
-        self.distance = distance
-        self.duration = duration
-
-
-    def from_journey_record(record):
-        return Journey(
-            record.departure_time,
-            record.return_time,
-            record.departure_id,
-            record.departure_name,
-            record.return_id,
-            record.return_name,
-            record.distance,
-            record.duration
-        )
-
-    @property
-    def duration(self):
-        return self._duration
-
-    @duration.setter
-    def duration(self, duration):
-        if isinstance(duration, str):
-            duration = int(duration)
-        if not isinstance(duration, int):
-            raise ValueError('???')
-        self._duration = duration
-
-    @property
-    def distance(self):
-        return self._distance
-
-    @distance.setter
-    def distance(self, distance):
-        if isinstance(distance, str):
-            if distance == '':
-                distance = 0.0
-            else:
-                distance = float(distance)
-        if not isinstance(distance, float):
-            raise ValueError('???')
-        self._distance = distance
-
-    @property
-    def return_station_name(self):
-        return self._return_station_name
-
-    @return_station_name.setter
-    def return_station_name(self, return_station_name):
-        if not isinstance(return_station_name, str):
-            raise ValueError('???')
-        self._return_station_name = return_station_name
-
-    @property
-    def return_station_id(self):
-        return self._return_station_id
-
-    @return_station_id.setter
-    def return_station_id(self, return_station_id):
-        if not isinstance(return_station_id, str):
-            raise ValueError('???')
-        self._return_station_id = return_station_id
-
-    @property
-    def departure_station_name(self):
-        return self._departure_station_name
-
-    @departure_station_name.setter
-    def departure_station_name(self, departure_station_name):
-        if not isinstance(departure_station_name, str):
-            raise ValueError('???')
-        self._departure_station_name = departure_station_name
-
-    @property
-    def departure_station_id(self):
-        return self._departure_station_id
-
-    @departure_station_id.setter
-    def departure_station_id(self, departure_station_id):
-        if not isinstance(departure_station_id, str):
-            raise ValueError('???')
-        self._departure_station_id = departure_station_id
-
-    @property
-    def return_time(self):
-        return self._return_time
-
-    @return_time.setter
-    def return_time(self, return_time):
-        if isinstance(return_time, str):
-            return_time = datetime.fromisoformat(return_time)
-        if not isinstance(return_time, datetime):
-            raise ValueError('???')
-        self._return_time = return_time
-
-    @property
-    def departure_time(self):
-        return self._departure_time
-
-    @departure_time.setter
-    def departure_time(self, departure_time):
-        if isinstance(departure_time, str):
-            departure_time = datetime.fromisoformat(departure_time)
-        if not isinstance(departure_time, datetime):
-            raise ValueError('???')
-        self._departure_time = departure_time
-
-    def __repr__(self):
-        return (
-            'Journey('
-            f'{str(self.departure_time)!r}, '
-            f'{str(self.return_time)!r}, '
-            f'{self.departure_station_id!r}, '
-            f'{self.departure_station_name!r}, '
-            f'{self.return_station_id!r}, '
-            f'{self.return_station_name!r}, '
-            f'{self.distance!r}, '
-            f'{self.duration!r}'
-            ')'
-        )
-#+end_src
-
-We can check with the parser if all the data is now parseable.
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-import traceback
-
-files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
-
-<<JourneyParser>>
-
-def try_parse(journey_record):
-    try:
-        return Journey.from_journey_record(journey_record)
-    except Exception as e:
-        print(traceback.format_exc(), end='')
-        raise e
-
-for f in files:
-    reader = csv.reader(open(f, 'r', newline=''))
-    # skip the header
-    next(reader)
-    list(map(try_parse, map(JourneyRecord._make, reader)))
-#+end_src
-
-#+RESULTS[6b314abaa957fbe31922465789c4ad91639619ee]:
-
-Since this results in no output, we have a good enough parser for the data.
-
-We can dump the data into an sqlite3 database.
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import sqlite3
-
-con = sqlite3.connect("journey.db")
-cur = con.cursor()
-query = """
-CREATE TABLE IF NOT EXISTS journey(
-  departure_time,
-  return_time,
-  departure_station_id,
-  departure_station_name,
-  return_station_id,
-  return_station_name,
-  distance,
-  duration
-)
-"""
-cur.execute(query)
-tables = cur.execute("SELECT name from sqlite_master")
-
-<<JourneyParser>>
-
-import csv
-
-files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
-for f in files:
-    reader = csv.reader(open(f, 'r', newline=''))
-    # skip the header
-    next(reader)
-    for journey in map(
-            Journey.from_journey_record,
-            (map(JourneyRecord._make, reader))):
-        cur.execute(
-            "INSERT INTO journey VALUES(?, ?, ?, ?, ?, ?, ? ,?)",
-            (journey.departure_time,
-             journey.return_time,
-             journey.departure_station_id,
-             journey.departure_station_name,
-             journey.return_station_id,
-             journey.return_station_name,
-             journey.distance,
-             journey.duration)
-        )
-con.commit()
-con.close()
-#+end_src
-
-#+RESULTS[a754e722ce2e73a672bfd92b059904ac186de661]:
-
-And then look up stuff I guess.
-
-#+header: :dir ../dataset
-#+begin_src python
-import sqlite3
-
-con = sqlite3.connect("journey.db")
-query = "SELECT * FROM journey LIMIT 1"
-res=con.execute(query)
-print(res.fetchone())
-con.close()
-#+end_src
-
-#+RESULTS:
-: ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
-
-And then push to a psql server
-
-#+begin_src sh
-podman network create postgres
-podman run --rm -d \
-       --name postgres-server \
-       --network=postgres \
-       -p5432:5432 \
-       -e POSTGRES_PASSWORD=postgres \
-       postgres
-#+end_src
-
-#+begin_src text
-psycopg2-binary
-#+end_src
-
-#+begin_src python
-import psycopg2
-import os
-
-
-conn = psycopg2.connect(
-    database=os.environ['PSQL_POSTGRES_DB'],
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-
-conn.autocommit = True
-
-from psycopg2.errors import DuplicateDatabase
-
-try:
-    with conn.cursor() as cur:
-        cur.execute("CREATE DATABASE hcb")
-except DuplicateDatabase:
-    pass
-finally:
-    conn.close()
-
-conn = psycopg2.connect(
-    database='hcb',
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-conn.autocommit = False
-
-SQL = """
-CREATE TABLE IF NOT EXISTS journey (
-departure_time TIMESTAMP,
-return_time TIMESTAMP,
-departure_station_id TEXT,
-departure_station_name TEXT,
-return_station_id TEXT,
-return_station_name TEXT,
-distance FLOAT,
-duration INTEGER
-)
-"""
-
-cur = conn.cursor()
-cur.execute(SQL)
-SQL = "INSERT INTO journey VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
-
-import sqlite3
-
-scon = sqlite3.connect("journey.db")
-query = "SELECT * FROM journey"
-res=scon.execute(query)
-
-<<JourneyParser>>
-
-for i, journey in enumerate(map(Journey.from_journey_record, map(JourneyRecord._make, res.fetchall()))):
-    cur.execute(
-        SQL,
-        (
-            journey.departure_time,
-            journey.return_time,
-            journey.departure_station_id,
-            journey.departure_station_name,
-            journey.return_station_id,
-            journey.return_station_name,
-            journey.distance,
-            journey.duration
-        )
-    )
-    if i % 10000 == 0:
-        print(i)
-
-conn.commit()
-scon.close()
-conn.close()
-#+end_src
-
-Need an index if I want to implement stable sorting.
-
-#+begin_src sql
-ALTER TABLE journey
-ADD COLUMN id SERIAL PRIMARY KEY;
-#+end_src
-
-And some indexes to speed up querying
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX distance_index
-ON journey(distance);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX duration_index
-ON journey(duration);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX departure_station_index
-ON journey(departure_station_name);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX return_station_index
-ON journey(return_station_name);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-How do I get this bad boy to Google SQL cheaply?
-
-Almost all lines in the original csv's contain dups.
-
-Here's a script that merges the files into one and deletes all dups.
-
-#+header: :dir ../dataset
-#+begin_src bash
-cat <(tail +2 2021-05.csv) \
-    <(tail +2 2021-06.csv) \
-    <(tail +2 2021-07.csv) \
-    | sort | uniq > journeys.csv
-#+end_src
-
-#+header: :dir ../dataset
-#+begin_src sh
-wc -l 2021-0?.csv journeys.csv
-#+end_src
-
-#+RESULTS:
-|  814677 | 2021-05.csv  |
-| 1223483 | 2021-06.csv  |
-| 1208845 | 2021-07.csv  |
-| 1623501 | journeys.csv |
-| 4870506 | total        |
-
-*** We want statistics
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT COUNT(*) AS departures
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-| departures |
-|------------|
-|       4930 |
-
-#+begin_src sql
-SELECT COUNT(*) from journey
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7);
-#+end_src
-
-#+RESULTS:
-|   count |
-|---------|
-| 3247002 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT COUNT(*) AS returns
-FROM journey
-JOIN our_station
-ON journey.return_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-| returns |
-|---------|
-|    5072 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT AVG(distance) as average_journey
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-|   average_journey |
-|-------------------|
-| 3655.007302231237 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT AVG(distance) as average_journey
-FROM journey
-JOIN our_station
-ON journey.return_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-|    average_journey |
-|--------------------|
-| 3773.3036277602523 |
-
-#+begin_src sql
-WITH station AS (
-    SELECT *
-    FROM station
-    WHERE fid = 1
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT AVG(distance) as average_departure_distance
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as avg_departure_distance,
-    (
-        SELECT AVG(distance) as average_return_distance
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as avg_return_distance
-)
-SELECT avg_return_distance, avg_departure_distance
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-#+end_src
-
-#+RESULTS:
-| avg_return_distance | avg_departure_distance |
-|---------------------+------------------------|
-|  3773.3036277602523 |      3655.007302231237 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT return_station_id, return_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-GROUP BY return_station_name, journey.return_station_id
-ORDER BY count DESC
-LIMIT 5;
-#+end_src
-
-#+RESULTS:
-| return_station_id | return_station_name      | count |
-|-------------------+--------------------------+-------|
-|               401 | Koivusaari (M)           |   376 |
-|               501 | Hanasaari                |   292 |
-|               057 | Lauttasaaren ostoskeskus |   246 |
-|               055 | Puistokaari              |   224 |
-|               505 | Westendinasema           |   222 |
-
-#+begin_src sql
-\set fid 1
-
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = :fid
-)
-SELECT departure_station_id, departure_station_name, COUNT(*)
-FROM journey
-JOIN our_station
-ON return_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-GROUP BY departure_station_name, departure_station_id
-ORDER BY count DESC
-LIMIT 5;
-#+end_src
-
-#+RESULTS:
-| departure_station_id | departure_station_name   | count |
-|----------------------+--------------------------+-------|
-|                  401 | Koivusaari (M)           |   200 |
-|                  055 | Puistokaari              |   121 |
-|                  595 | Westendintie             |   105 |
-|                  030 | Itämerentori             |    93 |
-|                  057 | Lauttasaaren ostoskeskus |    81 |
-
-#+begin_src sql
-WITH station AS (
-    SELECT *
-    FROM station
-    WHERE fid = 1
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as departures,
-    ( SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as returns
-)
-SELECT returns, departures
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-#+end_src
-
-#+RESULTS:
-| returns | departures |
-|---------+------------|
-|    1410 |       4930 |
-
-*** A random station
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-SELECT fid from station
-ORDER BY RANDOM()
-LIMIT 1;
-#+end_src
-
-#+RESULTS:
-| fid |
-|-----|
-| 344 |
-
-*** Top 5 destinations
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 320
-),
-top_destinations AS (
-     SELECT return_station_id, COUNT(*)
-     FROM journey
-     JOIN our_station
-     ON journey.departure_station_id = our_station.id
-     WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-     GROUP BY return_station_id
-     ORDER BY count DESC
-     LIMIT 5
-)
-SELECT station.fid as id, station.finnish_name, count
-FROM top_destinations
-JOIN station
-ON station.id = top_destinations.return_station_id
-ORDER BY count DESC;
-#+end_src
-
-#+RESULTS:
-|  id | finnish_name         | count |
-|-----+----------------------+-------|
-| 322 | Herttoniemi (M)      |   378 |
-| 321 | Petter Wetterin tie  |   200 |
-| 320 | Abraham Wetterin tie |   165 |
-| 330 | Porolahden koulu     |   161 |
-| 332 | Tulisuontie          |    86 |
 
 *** Station CSV
 :LOGBOOK:
 CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
 :END:
-
-Here's a parser for the station CSV.
-
-#+name: StationTypes
-#+begin_src python
-from collections import namedtuple
-
-StationRecord = namedtuple(
-    'StationRecord',
-    'fid,id,finnish_name,swedish_name,english_name,finnish_address,swedish_address,finnish_city,swedish_city,operator,capacity,x,y')
-
-class Station:
-    def __init__(
-            self,
-            fid,
-            id,
-            finnish_name,
-            swedish_name,
-            english_name,
-            finnish_address,
-            swedish_address,
-            finnish_city,
-            swedish_city,
-            operator,
-            capacity,
-            x,
-            y
-    ):
-        self.fid = fid
-        self.id = id
-        self.finnish_name = finnish_name
-        self.swedish_name = swedish_name
-        self.english_name = english_name
-        self.finnish_address = finnish_address
-        self.swedish_address = swedish_address
-        self.finnish_city = finnish_city
-        self.swedish_city = swedish_city
-        self.operator = operator
-        self.capacity = capacity
-        self.x = x
-        self.y = y
-
-    @staticmethod
-    def from_station_record(record):
-        return Station(
-            record.fid,
-            record.id,
-            record.finnish_name,
-            record.swedish_name,
-            record.english_name,
-            record.finnish_address,
-            record.swedish_address,
-            record.finnish_city,
-            record.swedish_city,
-            record.operator,
-            record.capacity,
-            record.x,
-            record.y
-        )
-
-    def __repr__(self):
-        return (
-            'Station('
-            f'{str(self.fid)!r}, '
-            f'{self.id!r}, '
-            f'{self.finnish_name!r}, '
-            f'{self.swedish_name!r}, '
-            f'{self.english_name!r}, '
-            f'{self.finnish_address!r}, '
-            f'{self.swedish_address!r}, '
-            f'{self.finnish_city!r},'
-            f'{self.swedish_city!r},'
-            f'{self.operator!r},'
-            f'{str(self.capacity)!r},'
-            f'{str(self.x)!r},'
-            f'{str(self.y)!r}'
-            ')'
-        )
-
-    @property
-    def y(self):
-        return self._y
-
-    @y.setter
-    def y(self, y):
-        if isinstance(y, str):
-            y = float(y)
-
-        if not isinstance(y, float):
-            raise ValueError()
-        self._y = y
-
-    @property
-    def x(self):
-        return self._x
-
-    @x.setter
-    def x(self, x):
-        if isinstance(x, str):
-            x = float(x)
-
-        if not isinstance(x, float):
-            raise ValueError()
-        self._x = x
-
-    @property
-    def capacity(self):
-        return self._capacity
-
-    @capacity.setter
-    def capacity(self, capacity):
-        if isinstance(capacity, str):
-            capacity = int(capacity)
-
-        if not isinstance(capacity, int):
-            raise ValueError()
-        self._capacity = capacity
-
-    @property
-    def operator(self):
-        return self._operator
-
-    @operator.setter
-    def operator(self, operator):
-        if not isinstance(operator, str):
-            raise ValueError()
-        self._operator = operator
-
-    @property
-    def swedish_address(self):
-        return self._swedish_address
-
-    @swedish_address.setter
-    def swedish_address(self, swedish_address):
-        if not isinstance(swedish_address, str):
-            raise ValueError()
-        self._swedish_address = swedish_address
-
-    @property
-    def finnish_address(self):
-        return self._finnish_address
-
-    @finnish_address.setter
-    def finnish_address(self, finnish_address):
-        if not isinstance(finnish_address, str):
-            raise ValueError()
-        self._finnish_address = finnish_address
-
-    @property
-    def english_name(self):
-        return self._english_name
-
-    @english_name.setter
-    def english_name(self, english_name):
-        if not isinstance(english_name, str):
-            raise ValueError()
-        self._english_name = english_name
-
-    @property
-    def swedish_name(self):
-        return self._swedish_name
-
-    @swedish_name.setter
-    def swedish_name(self, swedish_name):
-        if not isinstance(swedish_name, str):
-            raise ValueError()
-        self._swedish_name = swedish_name
-
-    @property
-    def finnish_name(self):
-        return self._finnish_name
-
-    @finnish_name.setter
-    def finnish_name(self, finnish_name):
-        if not isinstance(finnish_name, str):
-            raise ValueError()
-        self._finnish_name = finnish_name
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, id):
-        if not isinstance(id, str):
-            raise ValueError()
-        self._id = id
-
-    @property
-    def fid(self):
-        return self._fid
-
-    @fid.setter
-    def fid(self, fid):
-        if isinstance(fid, str):
-            fid = int(fid)
-        if not isinstance(fid, int):
-            raise ValueError()
-        self._fid = fid
-#+end_src
-
-#+RESULTS: StationTypes
-
-
-Here's how I pushed the stuff into psql.
-
-#+begin_src text
-psycopg2-binary
-#+end_src
-
-
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-import pprint
-import traceback
-import psycopg2
-import os
-<<StationTypes>>
-
-file = 'asemat.csv'
-
-reader = csv.reader(open(file, 'r', newline=''))
-# skip header
-next(reader)
-stations = map(Station.from_station_record, map(StationRecord._make, reader))
-
-
-conn = psycopg2.connect(
-    database='hcb',
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-
-SQL = """
-CREATE TABLE IF NOT EXISTS station (
-  fid INTEGER PRIMARY KEY,
-  id TEXT,
-  finnish_name TEXT,
-  swedish_name TEXT,
-  english_name TEXT,
-  finnish_address TEXT,
-  swedish_address TEXT,
-  finnish_city TEXT,
-  swedish_city TEXT,
-  operator TEXT,
-  capacity INTEGER,
-  x FLOAT,
-  y FLOAT
-)
-"""
-
-cur = conn.cursor()
-cur.execute(SQL)
-
-SQL = "INSERT INTO station VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-
-for station in stations:
-    cur.execute(SQL, (
-        station.fid,
-        station.id,
-        station.finnish_name,
-        station.swedish_name,
-        station.english_name,
-        station.finnish_address,
-        station.swedish_address,
-        station.finnish_city,
-        station.swedish_city,
-        station.operator,
-        station.capacity,
-        station.x,
-        station.y
-    ))
-
-conn.commit()
-conn.close()
-#+end_src
-
-#+RESULTS:
 
 ** Write the frontend
 :LOGBOOK:
@@ -1659,24 +583,6 @@ CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
 CLOCK: [2023-04-02 Sun 10:22]--[2023-04-02 Sun 12:10] =>  1:48
 :END:
 
-Now that we have an sqlite database of the journey data, we can start implementing its view.  The “backend” used is going to be the sqlite database.
-
-Spent the first 45 minutes fighting with setuptools because the directory I had the package in contained a space, great success.
-
-Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cookiecutter-starter]].  Project is in directory [[file:hcbf/]].
-
-Journeys list view now exists, it fetches data straight from an sqlite database.  Implements pagination and the recommended fields.
-
-Converted the frontend from pyramid to flask.
-
-Added support for pgsql data source.
-
-Implemented the stations view.
-
-Added pagination to stations view.
-
-Implemented filtering by month in single station view.
-
 ** Write data import
 :LOGBOOK:
 CLOCK: [2023-04-09 Sun 23:12]--[2023-04-10 Mon 01:01] =>  1:49
@@ -1690,18 +596,6 @@ CLOCK: [2023-04-10 Mon 23:22]--[2023-04-11 Tue 00:34] =>  1:12
 CLOCK: [2023-04-10 Mon 21:00]--[2023-04-10 Mon 23:00] =>  2:00
 CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
 :END:
-
-Currenly “the app” consists of a single server and an SQL database
-
-The server:
-+ Accepts HTTP requests from end users
-+ Fetches data from the database with prepared SQL statements
-+ Renders data into HTML pages
-+ Responds to the end user’s request
-
-One of the requirements outlined in the exercise is to have a [[id:9916A29B-46A5-4BC2-94E3-F9165C036275][separate backend service]] for querying data.  Currently that service is a SQL database instance.  To match the exercise criteria, I need to create a facade service to the database instance.  The facade should follow the [[https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm][REST architectural style]].
-
-Moved “the frontend” to to use “the backend” when rendering =/journeys=.
 
 ** Mock up journeys list view
 :LOGBOOK:
@@ -2304,7 +1198,8 @@ if __name__ == "__main__":
     main()
 #+end_src
 
-*** Journeys
+*** Journeys data import
+
 
 Functional requirements for the data import are:
 + Don't import journeys that lasted < 10 seconds
@@ -2312,7 +1207,7 @@ Functional requirements for the data import are:
 
 Here are some additional requirements I defined for the import process:
 + Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
-  + longer than 600 minutes
+  + longer than 6 hours
   + longer than 150 kilometers
 + Almost all journeys were duplicated in the CSV's.  Delete any duplicates.
 
@@ -2656,7 +1551,7 @@ VALUES (
         for i, journey in enumerate(journeys):
             dct = journey.to_dict()
             cursor.execute(insert_statement, dct)
-            if i % 1000 == 0:
+            if i % 100_000 == 0:
                 print(f'{i}/{len(journeys)}')
     connection.commit()
     print('done')
@@ -3316,6 +2211,8 @@ import os
 app = Flask(__name__)
 
 backend_url = os.environ['HCBF_BACKEND_URL']
+host = os.environ['HCBF_HOST']
+port = os.environ['HCBF_PORT']
 
 @dataclass
 class Journey:
@@ -3461,8 +2358,8 @@ def home():
     return render_template('home.html.j2')
 
 if __name__ == "__main__":
-    host = os.environ['HCBF_HOST']
-    port = os.environ['HCBF_PORT']
+    host = host
+    port = port
     app.run(host=host, port=port, debug=True)
 #+end_src
 
