@@ -49,16 +49,20 @@
     - [[#sql-statements][SQL statements]]
     - [[#database-prep-script][Database prep script]]
   - [[#the-data-import][The data import]]
-    - [[#stations][Stations]]
+    - [[#mainpy][main.py]]
+    - [[#requirementstxt][requirements.txt]]
+    - [[#stations-data-import][Stations data import]]
     - [[#journeys-data-import][Journeys data import]]
   - [[#the-backend][The backend]]
-    - [[#requirementstxt][requirements.txt]]
+    - [[#requirementstxt-1][requirements.txt]]
     - [[#dbpy][db.py]]
-    - [[#mainpy][main.py]]
+    - [[#mainpy-1][main.py]]
   - [[#the-frontend][The frontend]]
-    - [[#installing][Installing]]
-    - [[#package-requirements][Package requirements]]
+    - [[#requirementstxt-2][requirements.txt]]
     - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
+    - [[#html-templates][HTML templates]]
+    - [[#osmjs][osm.js]]
+    - [[#stylecss][style.css]]
 
 * Running locally with Docker
 
@@ -528,7 +532,7 @@ Not implemented.
 
 ** Improve documentation
 :LOGBOOK:
-CLOCK: [2023-04-12 Wed 15:56]
+CLOCK: [2023-04-12 Wed 15:56]--[2023-04-12 Wed 18:48] =>  2:52
 CLOCK: [2023-04-12 Wed 14:49]--[2023-04-12 Wed 15:05] =>  0:16
 CLOCK: [2023-04-12 Wed 13:57]--[2023-04-12 Wed 14:43] =>  0:46
 CLOCK: [2023-04-11 Tue 20:51]--[2023-04-12 Wed 00:52] =>  4:01
@@ -749,11 +753,14 @@ print('OK')
 
 ** The data import
 
-“Data import” reads journey and station data from the internet.  This component has two separate pieces:
+Data import reads journey and station data from the internet.  This component has two separate pieces:
 + Journey import
 + Station import
+Which are glued together in main.py.
 
-#+header: :tangle hcb-data-import/main.py :mkdirp yes
+*** main.py
+
+#+header: :tangle hcb-data-import/main.py
 #+begin_src python
 import journeys
 import stations
@@ -763,19 +770,19 @@ if __name__ == "__main__":
     journeys.main()
 #+end_src
 
+*** requirements.txt
+
 #+header: :tangle hcb-data-import/requirements.txt :mkdirp yes
 #+begin_src text
 psycopg2-binary
 requests
 #+end_src
 
-*** Stations
+*** Stations data import
 
-This is the part of data import that downloads station data.
+This is the part of data import that downloads station data, and pushes it to a PostgreSQL database instance.
 
-This imports station data and pushes it to a PostgreSQL.
-
-#+header: :tangle hcb-data-import/stations.py :mkdirp yes
+#+header: :tangle hcb-data-import/stations.py
 #+begin_src python
 import os
 import requests
@@ -1200,7 +1207,6 @@ if __name__ == "__main__":
 
 *** Journeys data import
 
-
 Functional requirements for the data import are:
 + Don't import journeys that lasted < 10 seconds
 + Don't import journeys that covered < 10 meters
@@ -1209,7 +1215,7 @@ Here are some additional requirements I defined for the import process:
 + Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
   + longer than 6 hours
   + longer than 150 kilometers
-+ Almost all journeys were duplicated in the CSV's.  Delete any duplicates.
++ Almost all journeys were duplicated in the CSV's.  Delete duplicate entries.
 
 #+header: :tangle hcb-data-import/journeys.py :mkdirp yes
 #+begin_src python
@@ -1565,11 +1571,11 @@ if __name__ == "__main__":
     main()
 #+end_src
 
-#+RESULTS:
-
 ** The backend
 
-“The backend” is a facade for “The database”.  A client may interface with “the backend” via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to a client.
+The backend is a facade for the database.  Initially the frontend made SQL calls directly, but one of the assignment requirements mandated a backend.  Of course PostgreSQL could be considered a backend, but maybe that is not what the assignment creators had in mind when they referred to a backend.
+
+A client may interface with the backend via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the client that interfaced with the backend.
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
@@ -1584,17 +1590,15 @@ psycopg2-binary
 
 *** db.py
 
+This is the file that implements the logic that directly interfaces with PostgreSQL.
+
+The =*Params= classes guard the parameters that may be passed to SQL.  The classes =*Object= and =*Info= are wrapper classes for values returned from an SQL query.  The =DB= class performs queries and returns their results.
+
 #+header: :tangle hcb-backend/db.py
 #+begin_src python
 import psycopg2
 from psycopg2.extensions import AsIs
 from dataclasses import dataclass
-
-@dataclass
-class GetStationsObject:
-    id: int
-    name: str
-    address: str
 
 class GetStationsParams:
     def __init__(self, *, page, page_size, search_term):
@@ -1654,15 +1658,6 @@ class GetStationsParams:
             'page_size': self.page_size,
             'offset': self.sql_offset()
         }
-
-@dataclass
-class GetJourneysObject:
-    departure_station_id: int
-    departure_station_name: str
-    return_station_id: int
-    return_station_name: str
-    distance: float
-    duration: int
 
 class GetJourneysParams:
     order_by_mapping = {
@@ -1772,6 +1767,83 @@ class GetJourneysParams:
             'page_size': self.page_size,
             'offset': self.sql_offset()
         }
+
+
+class GetStationInfoParams:
+    def __init__(self, *, id, months):
+        self.id = id
+        self.months = months
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if not isinstance(id, int):
+            raise TypeError('id expected to be an int')
+        self._id = id
+
+    @property
+    def months(self):
+        return self._months
+
+    @months.setter
+    def months(self, months):
+        if not isinstance(months, tuple):
+            raise TypeEror('months expected to be a tuple')
+        if len(months) > 3:
+            raise ValueError('months contains too many values (> 3)')
+        for month in months:
+            if not isinstance(month, int):
+                raise ValueError(
+                    'All values in months tuple should be of int type'
+                )
+            if month not in (5, 6, 7):
+                raise ValueError(
+                    'Value did not match tuple (5, 6, 7)'
+                )
+        self._months = months
+
+    def as_statement_params(self):
+        return {
+            'id': self.id,
+            'months': self.months
+        }
+
+@dataclass
+class GetStationsObject:
+    id: int
+    name: str
+    address: str
+
+@dataclass
+class GetJourneysObject:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destinations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
 
 class DB:
     def __init__(self, database, user, password, host, port):
@@ -2007,36 +2079,6 @@ WHERE fid = %(id)s
             top_destinations=destinations,
             top_origins=origins
         )
-
-class GetStationInfoParams:
-    def __init__(self, *, id, months):
-        self.id = id
-        self.months = months
-
-    def as_statement_params(self):
-        return {
-            'id': self.id,
-            'months': self.months
-        }
-
-@dataclass
-class StationRelationInfo:
-    id: int
-    name: str
-    journeys: int
-
-@dataclass
-class StationInfo:
-    name: str
-    address: str
-    x: float
-    y: float
-    journeys_started_here: int
-    journeys_ended_here: int
-    average_distance_started_here: int
-    average_distance_ended_here: int
-    top_destinations: list[StationRelationInfo]
-    top_origins: list[StationRelationInfo]
 #+end_src
 
 *** main.py
@@ -2163,34 +2205,15 @@ if __name__ == "__main__":
 
 ** The frontend
 
-“The frontend” offers the following views:
+The frontend offers the following views:
 + A home page
-+ [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
-+ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station list]]
-+ [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
++ A journey list
++ A station list
++ A more specific listing of a station.
 
 It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
 
-*** Installing
-
-# TODO provide source code
-To be able to run “the frontend”, your machine should have a working Python interpreter or Docker.  You can download the sources for the front end once I make them available.
-
-Make sure you are at the root directory of the front end application before running the following commands:
-
-**** Create a virtual environment in the root directory
-
-#+begin_src sh
-python -m venv env
-#+end_src
-
-**** Install Python package dependencies
-
-#+begin_src sh
-./env/bin/pip install -r requirements.txt
-#+end_src
-
-*** Package requirements
+*** requirements.txt
 
 #+header: :tangle hcb-frontend/requirements.txt
 #+begin_src python
@@ -2303,7 +2326,7 @@ class StationInfo:
     journeys_ended_here: int
     average_distance_started_here: int
     average_distance_ended_here: int
-    top_destionations: list[StationRelationInfo]
+    top_destinations: list[StationRelationInfo]
     top_origins: list[StationRelationInfo]
 
 
@@ -2333,7 +2356,7 @@ def station(station_id):
         data['average_distance_started_here'],
         average_distance_ended_here=\
         data['average_distance_ended_here'],
-        top_destionations=[StationRelationInfo(**value) for value in data['top_destinations']],
+        top_destinations=[StationRelationInfo(**value) for value in data['top_destinations']],
         top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
     )
 
@@ -2363,6 +2386,12 @@ if __name__ == "__main__":
     app.run(host=host, port=port, debug=True)
 #+end_src
 
+*** HTML templates
+
+**** base.html.j2
+
+This template is not rendered directly, instead other templates inherit and implement its blocks as needed.
+
 #+header: :tangle hcb-frontend/templates/base.html.j2
 #+begin_src jinja2
 <!doctype html>
@@ -2384,15 +2413,12 @@ if __name__ == "__main__":
     {% block navbar %}
       <nav class="navbar navbar-expand-lg bg-light">
         <div class="container-fluid">
-          <a class="navbar-brand" href="#">Helsinki City Bikes</a>
+          <a class="navbar-brand" href="{{ url_for('home') }}">Helsinki City Bikes</a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
           <div class="collapse navbar-collapse" id="navbarSupportedContent">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('home') }}">Home</a>
-              </li>
               <li class="nav-item">
                 <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
               </li>
@@ -2415,6 +2441,10 @@ if __name__ == "__main__":
 </html>
 #+end_src
 
+**** home.html.j2
+
+Served when visiting =/=.
+
 #+header: :tangle hcb-frontend/templates/home.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
@@ -2436,6 +2466,10 @@ if __name__ == "__main__":
   </div>
 {% endblock %}
 #+end_src
+
+**** journeys.html.j2
+
+Served when visiting =/journeys=.
 
 #+header: :tangle hcb-frontend/templates/journeys.html.j2
 #+begin_src jinja2
@@ -2574,6 +2608,10 @@ if __name__ == "__main__":
 {% endblock content %}
 #+end_src
 
+**** stations.html.j2
+
+Served when visiting =/stations=.
+
 #+header: :tangle hcb-frontend/templates/stations.html.j2
 #+begin_src jinja2
 {% extends "base.html.j2" %}
@@ -2650,6 +2688,8 @@ if __name__ == "__main__":
   </div>
 {% endblock content %}
 #+end_src
+
+Served when visiting =station/<id>=.
 
 #+header: :tangle hcb-frontend/templates/station.html.j2
 #+begin_src jinja2
@@ -2766,7 +2806,7 @@ if __name__ == "__main__":
                 </tr>
               </thead>
               <tbody>
-                {% for journey in station['top_origins'] %}
+                {% for journey in station.top_origins %}
                   <tr>
                     <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
                     <td>{{ journey.journeys }}</td>
@@ -2795,18 +2835,18 @@ if __name__ == "__main__":
 {% endblock body_plus %}
 #+end_src
 
+*** osm.js
+
+A small bit of Javascript to draw the little marker on the openstreetmap map.
+
 #+header: :tangle hcb-frontend/static/osm.js
 #+begin_src js
-// Where you want to render the map.
 var element = document.getElementById('osm-map');
 
-// Height has to be set. You can do this in CSS too.
 element.style = 'height:600px;'
 
-// Create Leaflet map on map element.
 var map = L.map(element);
 
-// Add OSM tile layer to the Leaflet map.
 L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
@@ -2818,6 +2858,10 @@ map.setView(target, 13);
 L.marker(target)
   .addTo(map);
 #+end_src
+
+*** style.css
+
+Custom css, which there obviously is not a lot of.
 
 #+header: :tangle hcb-frontend/static/style.css
 #+begin_src css
