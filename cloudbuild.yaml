@@ -16,7 +16,14 @@ steps:
       - |
         tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
     id: make-source-tarball
+    waitFor: ['tangle-sources']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-frontend', 'hcb-frontend']
+    id: build-hcb-image
+    waitFor: ['tangle-sources']
   - name: 'gcr.io/cloud-builders/gsutil'
     args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes/$BRANCH_NAME/$SHORT_SHA.$BUILD_ID/']
     id: tarball-to-cloud-storage
     waitFor: ['make-source-tarball']
+
+images: ['europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker-hcb-frontend']
