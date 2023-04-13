@@ -26,4 +26,4 @@ steps:
     id: tarball-to-cloud-storage
     waitFor: ['make-source-tarball']
 
-images: ['europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker-hcb-frontend:latest']
+images: ['europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-frontend:latest']
