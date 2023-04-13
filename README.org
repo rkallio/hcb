@@ -1,6 +1,17 @@
 #+todo: TODO | DONE
+#+property: header-args :mkdirp yes
+
 
 * Table of contents                                                     :TOC:
+- [[#running-locally-with-docker][Running locally with Docker]]
+  - [[#download-and-extract-the-source-tarballs][Download and extract the source tarballs]]
+  - [[#define-a-docker-network][Define a Docker network]]
+  - [[#run-up-a-postgresql-database][Run up a PostgreSQL database]]
+  - [[#declare-the-database][Declare the database]]
+  - [[#populate-the-database][Populate the database]]
+  - [[#run-up-the-backend][Run up the backend]]
+  - [[#run-up-the-frontend][Run up the frontend]]
+- [[#cleaning-up][Cleaning up]]
 - [[#the-assignment][The assignment]]
   - [[#the-exercise][The exercise]]
   - [[#stuff-to-do][Stuff to do]]
@@ -21,13 +32,11 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#improve-documentation][Improve documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
   - [[#explore-the-dataset][Explore the dataset]]
     - [[#journeys-csvs][Journeys CSVs]]
-    - [[#we-want-statistics][We want statistics]]
-    - [[#a-random-station][A random station]]
-    - [[#top-5-destinations][Top 5 destinations]]
     - [[#station-csv][Station CSV]]
   - [[#write-the-frontend][Write the frontend]]
   - [[#write-data-import][Write data import]]
@@ -36,266 +45,406 @@
   - [[#explore-hosting-options-on-google-cloud][Explore hosting options on google cloud]]
   - [[#set-up-cloud-sql][Set up cloud SQL]]
 - [[#implementation][Implementation]]
-  - [[#the-frontend][The frontend]]
-    - [[#installing][Installing]]
-    - [[#package-requirements][Package requirements]]
-    - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
-  - [[#the-backend][The backend]]
-    - [[#installing-1][Installing]]
-    - [[#requirements][Requirements]]
-    - [[#dbpy][db.py]]
-    - [[#mainpy][main.py]]
   - [[#the-database][The database]]
+    - [[#sql-statements][SQL statements]]
+    - [[#database-prep-script][Database prep script]]
   - [[#the-data-import][The data import]]
-    - [[#stations][Stations]]
-    - [[#journeys][Journeys]]
+    - [[#mainpy][main.py]]
+    - [[#requirementstxt][requirements.txt]]
+    - [[#stations-data-import][Stations data import]]
+    - [[#journeys-data-import][Journeys data import]]
+  - [[#the-backend][The backend]]
+    - [[#requirementstxt-1][requirements.txt]]
+    - [[#dbpy][db.py]]
+    - [[#mainpy-1][main.py]]
+  - [[#the-frontend][The frontend]]
+    - [[#requirementstxt-2][requirements.txt]]
+    - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
+    - [[#html-templates][HTML templates]]
+    - [[#osmjs][osm.js]]
+    - [[#stylecss][style.css]]
+
+* Running locally with Docker
+
+Here are short instructions for setting up the app locally.
+
+Prerequisites:
++ A browser and an archive extractor, or =curl= and =tar=
++ A container engine like Docker.  The engine's VM should have access to at least 4GB of memory.
+
+Note that I used [[https://podman.io][Podman]] instead of Docker as the container engine.  I know from experience that they don't quite share the same feature set.  If you run into issues, try running the commands with podman, which is very easy to install on a Linux host.
+
+** Download and extract the source tarballs
+
+The application sources are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+
+#+header: :results scalar
+#+begin_src sh
+curl https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar \
+    | tar xv
+#+end_src
+
+Alternatively, if you have Emacs installed on your machine, open this file in Emacs and run the command =M-x org-babel-tangle=.
+
+** Define a Docker network
+
+Set up a Docker network.  This allows the networked components to talk to each other.
+
+#+begin_src sh
+docker network create hcb
+#+end_src
+
+** Run up a PostgreSQL database
+
+Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-docker-network][define a Docker network]].
+
+#+begin_src sh
+docker run --rm --detach \
+       --name=postgres-server \
+       --network=hcb \
+       --publish 5432:5432 \
+       --env POSTGRES_PASSWORD=postgres \
+       postgres
+#+end_src
+
+** Declare the database
+
+A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =sample.env=, which can be tweaked in case you run into connection issues.
+
+#+begin_src sh
+cd hcb-setup-database
+docker build --tag=hcb-setup-database .
+docker run --rm --tty \
+       --network=hcb \
+       --env-file=sample.env \
+       hcb-setup-database
+#+end_src
+
+Here is the =Dockerfile= and the =sample.env= files for reference.
+
+#+header: :tangle hcb-setup-database/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-setup-database/sample.env
+#+begin_src conf
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+#+end_src
+
+** Populate the database
+
+This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get a =Killed= while processing, increase Docker's allocated memory to 4096MB.
+
+#+begin_src sh
+cd hcb-data-import
+docker build --tag=hcb-data-import .
+docker run --rm --tty \
+       --network=hcb \
+       --env-file=sample.env \
+       hcb-data-import
+#+end_src
+
+Here is the =Dockerfile= and the =sample.env= for reference.
+
+#+header: :tangle hcb-data-import/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+ADD stations.py .
+ADD journeys.py .
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-data-import/sample.env
+#+begin_src conf
+HCBI_JOURNEY_SOURCES=https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv
+HCBI_STATION_SOURCE=https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv
+PSQL_DATABASE=hcb
+PSQL_USERNAME=postgres
+PSQL_PASSWORD=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+#+end_src
+
+** Run up the backend
+
+[[#the-backend][The backend]] is untarred to =hcb-backend=.  Again, there is a =Dockerfile= and a =sample.env= provided.  Here's how you would build the container and run it:
+
+#+begin_src sh
+cd hcb-backend
+docker build --tag=hcb-backend .
+docker run --rm --detach \
+       --network=hcb \
+       --name=hcb-backend \
+       --env-file=sample.env \
+       --publish 5433:5433 \
+       hcb-backend
+#+end_src
+
+To verify the backend is able to connect to psql and serve requests, try performing a HTTP GET on one of the endpoints:
++ =/journeys=
++ =/stations=
++ =/random-station=
+
+Something like this should work:
+
+#+begin_src http
+GET http://localhost:5433/journeys?page_size=5 HTTP/1.1
+#+end_src
+
+Here are the =Dockerfile= and =sample.env= file, as a reference.
+
+#+header: :tangle hcb-backend/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+ADD db.py .
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-backend/sample.env
+#+begin_src conf
+PSQL_DB=hcb
+PSQL_USER=postgres
+PSQL_PASS=postgres
+PSQL_HOST=postgres-server
+PSQL_PORT=5432
+HCBB_HOST=0.0.0.0
+HCBB_PORT=5433
+#+end_src
+
+** Run up the frontend
+
+[[#the-frontend][The frontend]] is untarred to =hcb-frontend=.  Build and run it.
+
+#+begin_src sh
+cd hcb-frontend
+docker build -t hcb-frontend .
+docker run --rm --detach \
+       --network=hcb \
+       --name=hcb-frontend \
+       --env-file=sample.env \
+       --publish=5434:5434 \
+       hcb-frontend
+#+end_src
+
+To verify everything is working, visit [[http://127.0.0.1:5434/]] using your browser.
+
+Once again, here are the =Dockerfile= and =sample.env= for reference.
+
+#+header: :tangle hcb-frontend/Dockerfile
+#+begin_src dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+ADD requirements.txt .
+RUN pip install -r requirements.txt
+ADD main.py .
+COPY templates/ templates/
+COPY static/ static/
+CMD python main.py
+#+end_src
+
+#+header: :tangle hcb-frontend/sample.env
+#+begin_src conf
+HCBF_HOST=0.0.0.0
+HCBF_PORT=5434
+HCBF_BACKEND_URL=http://hcb-backend:5433
+#+end_src
+
+* Cleaning up
+
+Run the following commands to remove docker images, containers and networks related to this project:
+
+#+begin_src sh
+docker kill hcb-frontend hcb-backend postgres-server
+docker network rm hcb
+docker rmi hcb-frontend hcb-backend hcb-data-import hcb-setup-database postgres:latest python:3.11-slim
+#+end_src
 
 * The assignment
 
-Text here lifted from the [[id:40872028-9B66-4C60-BCEA-0F8D427CBF74][repository]].
+This section was lifted from the [[https://github.com/solita/dev-academy-2023-exercise][assignment repository]] and modified afterwards.
 
 ** The exercise
 :PROPERTIES:
 :ID:       9916A29B-46A5-4BC2-94E3-F9165C036275
 :END:
 
-Create a *web application* that uses a *backend service* to fetch the data. *Backend* can be made with any technology. We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
+Create a web application that uses a backend service to fetch the data.  Backend can be made with any technology.  We at Solita use for example (not in preference order) Java/Kotlin/Clojure/C#/TypeScript/Go but you are free to choose any other technology as well.
 
-Backend can use a database, or it can be memory-based. *Real database use is a preferable* choice because it allows you to show broader skills. Also, the datasets are quite big so in-memory operations may be quite slow.
+Backend can use a database, or it can be memory-based.  Real database use is a preferable choice because it allows you to show broader skills.  Also, the datasets are quite big so in-memory operations may be quite slow.
 
-You can also freely choose the frontend (and possibly mobile frontend) technologies to use. The important part is to give good instructions on how to build and run the project.
+You can also freely choose the frontend (and possibly mobile frontend) technologies to use.  The important part is to give good instructions on how to build and run the project.
 
 ** Stuff to do
 
-Important! Implementing all of the proposed features is not needed for a good exercise result. You may also concentrate on:
+Important! Implementing all of the proposed features is not needed for a good exercise result.  You may also concentrate on:
 
 + Good documentation (readme/other docs)
 + Proper git usage (small commits, informative commit messages)
 + Tests
 + Getting features complete
 + Writing good code
-+ Which are all highly valued in a good repository.
+
+Which are all highly valued in a good repository.
 
 ** Functional requirements
 
-Focus on the recommended features. For extra points, you might want to also complete some additional features. You can also come up with extra features, if you do, please document them in the readme!
+Focus on the recommended features.  For extra points, you might want to also complete some additional features.  You can also come up with extra features, if you do, please document them in the readme!
 
 *** Data import
 
 **** Recommended
 
-*****  Import data from the CSV files to a database or in-memory storage
+***** Import data from the CSV files to a database or in-memory storage
+
+Implemented as part of [[#the-data-import][The data import]].
 
 ***** Validate data before importing
 
+Implemented as part of [[#journeys-data-import][Journeys data import]].  See the validation rules defined [[#journeys-data-import][here]].
+
 ***** Don't import journeys that lasted for less than ten seconds
+
+Implemented as part of [[#journeys-data-import][Journeys data import]].
 
 ***** Don't import journeys that covered distances shorter than 10 meters
 
+Implemented as part of [[#journeys-data-import][Journeys data import]].
+
 *** Journey list view
-:PROPERTIES:
-:ID:       3021535E-D457-4E21-B296-4035BCE2E439
-:END:
 
 **** Recommended
 
 ***** List journeys
-:PROPERTIES:
-:ID:       B4893559-616F-40BF-921F-7D317A7A3233
-:END:
 
 If you don't implement pagination, use some hard-coded limit for the list length because showing several million rows would make any browser choke
 
+Implemented both in the frontend and the backend.  Implementation includes pagination.
+
 ***** For each journey show departure and return stations, covered distance in kilometers and duration in minutes
-:PROPERTIES:
-:ID:       9C02BABD-4912-400F-91BE-7ACE4403DE58
-:END:
+
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       7DC9F915-F042-4FD0-8B35-F1CB41822661
-:END:
 
 ***** Pagination
-:PROPERTIES:
-:ID:       C3F75C9E-BF89-4BA2-8FF9-6A0834A5FD9C
-:END:
+
+Implemented.
 
 ***** Ordering per column
-:PROPERTIES:
-:ID:       E0C31B66-06FB-41CE-997D-B0C7263C453C
-:END:
+
+Implemented ordering by departure station name, return station name, distance covered, and time, in ascending and descending order.
 
 ***** Searching
-:PROPERTIES:
-:ID:       46BC5278-F5AE-4111-81CE-FABBBBDF2CCC
-:END:
+
+Implemented searching by departure- and return station names.
 
 ***** Filtering
-:PROPERTIES:
-:ID:       E59913C7-F2CA-46EB-BDF2-F6DDC2DEFCDE
-:END:
+
+Not implemented.
 
 *** Station list
-:PROPERTIES:
-:ID:       89C5ADDA-6E9D-485B-877F-2A47D765789A
-:END:
 
 **** Recommended
-:PROPERTIES:
-:ID:       560F2659-2E0A-43CC-B784-071D774D9305
-:END:
 
 ***** List all the stations
-:PROPERTIES:
-:ID:       2E7F4555-4A42-4A5F-96CD-B917DED9F27F
-:END:
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       501D1AFF-D0DE-4C8F-9557-CFF81447EA1C
-:END:
 
 ***** Pagination
-:PROPERTIES:
-:ID:       57A6951C-D5B4-4ABE-90CC-9737DB955055
-:END:
+
+Implemented.
 
 ***** Searching
-:PROPERTIES:
-:ID:       1A851198-298A-417B-9E16-091C0F722A69
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
 
-#+begin_src sql
-\d+ station
-#+end_src
-
-#+RESULTS:
-| Table "public.station"                  |                  |           |          |         |          |             |              |             |
-|-----------------------------------------+------------------+-----------+----------+---------+----------+-------------+--------------+-------------|
-| Column                                  | Type             | Collation | Nullable | Default | Storage  | Compression | Stats target | Description |
-| fid                                     | integer          |           | not null |         | plain    |             |              |             |
-| id                                      | text             |           |          |         | extended |             |              |             |
-| finnish_name                            | text             |           |          |         | extended |             |              |             |
-| swedish_name                            | text             |           |          |         | extended |             |              |             |
-| english_name                            | text             |           |          |         | extended |             |              |             |
-| finnish_address                         | text             |           |          |         | extended |             |              |             |
-| swedish_address                         | text             |           |          |         | extended |             |              |             |
-| finnish_city                            | text             |           |          |         | extended |             |              |             |
-| swedish_city                            | text             |           |          |         | extended |             |              |             |
-| operator                                | text             |           |          |         | extended |             |              |             |
-| capacity                                | integer          |           |          |         | plain    |             |              |             |
-| x                                       | double precision |           |          |         | plain    |             |              |             |
-| y                                       | double precision |           |          |         | plain    |             |              |             |
-| Indexes:                                |                  |           |          |         |          |             |              |             |
-| "station_pkey" PRIMARY KEY, btree (fid) |                  |           |          |         |          |             |              |             |
-| Access method: heap                     |                  |           |          |         |          |             |              |             |
-
-#+begin_src sql
-SELECT english_name, finnish_address
-FROM station
-WHERE    english_name    ILIKE '%kannel%'
-      OR finnish_address ILIKE '%kannel%'
-LIMIT 10;
-#+end_src
-
-#+RESULTS:
-| english_name               | finnish_address |
-|----------------------------+-----------------|
-| Kannelmäen liikuntapuisto  | Kanneltie 12    |
-| Kannelmäki railway station | Sitratori 2     |
-
+Implemented searching by station name and address.
 
 *** Single station view
-:PROPERTIES:
-:ID:       8B7AC0C5-E098-401C-936F-9B8AA51B8AB4
-:END:
 
 **** Recommended
-:PROPERTIES:
-:ID:       3FE0134F-3D02-44E6-B340-28C7100F2AEA
-:END:
 
 ***** Station name
-:PROPERTIES:
-:ID:       A85600E0-7208-4CA2-98A5-C7B4AB286607
-:END:
+
+Implemented.
 
 ***** Station address
-:PROPERTIES:
-:ID:       EDD7F112-7D78-4308-AEBB-EBB652CF1E19
-:END:
+
+Implemented.
 
 ***** Total number of journeys starting from the station
-:PROPERTIES:
-:ID:       8DC3256B-CE71-4C5D-98F8-620F56EA6A4D
-:END:
+
+Implemented.
 
 ***** Total number of journeys ending at the station
-:PROPERTIES:
-:ID:       BF6F35A7-ADFF-473D-9A84-03CA5A7EB6A3
-:END:
+
+Implemented.
 
 **** Additional
-:PROPERTIES:
-:ID:       54FF5C21-84E5-452A-A254-1038B45C98B0
-:END:
 
 ***** Station location on the map
-:PROPERTIES:
-:ID:       32E8AD8C-7075-41E2-857A-3028E260F2A0
-:END:
+
+Implemented using [[https://www.openstreetmap.org/][openstreetmap]].
 
 ***** The average distance of a journey starting from the station
-:PROPERTIES:
-:ID:       BE865AC1-498E-4211-B2E3-D0E6E5748D14
-:END:
+
+Implemented.
 
 ***** The average distance of a journey ending at the station
-:PROPERTIES:
-:ID:       9CE27BCA-212A-4652-926E-0A19EF9B41B4
-:END:
+
+Implemented.
 
 ***** Top 5 most popular return stations for journeys starting from the station
-:PROPERTIES:
-:ID:       D42F365F-AF8D-42DC-8BD9-569C7CE7A633
-:END:
+
+Implemented.
 
 ***** Top 5 most popular departure stations for journeys ending at the station
-:PROPERTIES:
-:ID:       3A44653C-D103-493F-B9BC-E5FD1114E582
-:END:
+
+Implemented.
 
 ***** Ability to filter all the calculations per month
-:PROPERTIES:
-:ID:       FC0D1A36-1AC4-4062-BE61-778E63EEAB71
-:END:
+
+Implemented.
 
 *** Surprise us with
 
 **** Endpoints to store new journeys data or new bicycle stations
-:PROPERTIES:
-:ID:       0E3E7F1C-06BC-4E1D-BD78-070E8C6318BC
-:END:
+
+Not implemented.
 
 **** Running backend in Docker
+
+Implemented.
 
 **** Running backend in Cloud
 
 **** Implement E2E tests
 
 **** Create UI for adding journeys or bicycle stations
-:PROPERTIES:
-:ID:       4105F08E-4AE4-4A2F-BB4F-EC9C9F9B275B
-:END:
+
+Not implemented.
 
 * Resources
 
 ** Assignment, requirements specification
-:PROPERTIES:
-:ID:       40872028-9B66-4C60-BCEA-0F8D427CBF74
-:END:
 
 [[https://github.com/solita/dev-academy-2023-exercise]]
 
@@ -313,7 +462,6 @@ LIMIT 10;
 
 *** Journey dataset
 
-Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]].
 
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv]]
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv]]
@@ -331,14 +479,19 @@ Contact information for the dataset: [[id:749A080A-801E-4BB1-A8B6-6F4FAC42BE4F]]
 [[mailto:pauliinahovila@solita.fi]]
 
 *** Dataset contacts
-:PROPERTIES:
-:ID:       749A080A-801E-4BB1-A8B6-6F4FAC42BE4F
-:END:
 
 + [[mailto:heikki.hamalainen@solita.fi]]
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+
+** Improve documentation
+:LOGBOOK:
+CLOCK: [2023-04-12 Wed 15:56]--[2023-04-12 Wed 18:48] =>  2:52
+CLOCK: [2023-04-12 Wed 14:49]--[2023-04-12 Wed 15:05] =>  0:16
+CLOCK: [2023-04-12 Wed 13:57]--[2023-04-12 Wed 14:43] =>  0:46
+CLOCK: [2023-04-11 Tue 20:51]--[2023-04-12 Wed 00:52] =>  4:01
+:END:
 
 ** Get acquainted with the project assignment
 :LOGBOOK:
@@ -352,10 +505,6 @@ CLOCK: [2023-04-01 Sat 20:41]--[2023-04-01 Sat 21:14] =>  0:33
 :END:
 
 ** Explore the dataset
-:PROPERTIES:
-:header-args: :noweb yes
-:ID:       8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A
-:END:
 :LOGBOOK:
 CLOCK: [2023-04-07 Fri 20:40]--[2023-04-07 Fri 21:00] =>  0:20
 CLOCK: [2023-04-07 Fri 19:44]--[2023-04-07 Fri 19:46] =>  0:02
@@ -371,1013 +520,11 @@ CLOCK: [2023-04-01 Sat 21:15]--[2023-04-01 Sat 22:17] =>  1:02
 CLOCK: [2023-04-08 Sat 21:39]--[2023-04-08 Sat 22:36] =>  0:57
 CLOCK: [2023-04-08 Sat 00:58]--[2023-04-08 Sat 01:05] =>  0:07
 :END:
-The journey dataset consists of three files, one file for the data of one month.
-
-CSV header defines the following fields:
-+ Departure
-+ Return
-+ Departure station id
-+ Departure station name
-+ Return station id
-+ Return station name
-+ Covered distance (m)
-+ Duration (sec)
-
-AKA this thing:
-
-#+name: JourneyRecordTuple
-#+begin_src python
-from collections import namedtuple
-
-JourneyRecord = namedtuple(
-    'JourneyRecord',
-    'departure_time,return_time,departure_id,departure_name,return_id,return_name,distance,duration'
-)
-#+end_src
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-
-f = '2021-05.csv'
-
-<<JourneyRecordTuple>>
-
-reader = csv.reader(open(f, 'r'))
-# skip the header
-next(reader)
-print(list(map(JourneyRecord._make, reader))[1:2])
-#+end_src
-
-#+RESULTS[2684a09d41a676953da92f9c5450e4deecae00a0]:
-: [JourneyRecord(departure_time='2021-05-31T23:56:59', return_time='2021-06-01T00:07:14', departure_id='082', departure_name='Töölöntulli', return_id='113', return_name='Pasilan asema', distance='1870', duration='611')]
-
-Departure seems to be a timestamp without a timezone, same for Return.  I'll just assume this is in UTC and move on.
-
-Departure station id and return station id seem to strings, because they may start with a 0.  +Distance and duration are ints+.  Only duration is always an int, distance may be the empty string, or a float.  Let's set the distance to 0 if it is represented as an empty string.  Departure and return stations names seem to be simple strings.
-
-Here's a parser to check if I'm right.
-
-#+name: JourneyParser
-#+begin_src python
-<<JourneyRecordTuple>>
-
-from datetime import datetime
-
-
-class Journey:
-    def __init__(
-            self,
-            departure_time,
-            return_time,
-            departure_station_id,
-            departure_station_name,
-            return_station_id,
-            return_station_name,
-            distance,
-            duration
-    ):
-        self.departure_time = departure_time
-        self.return_time = return_time
-        self.departure_station_id = departure_station_id
-        self.departure_station_name = departure_station_name
-        self.return_station_id = return_station_id
-        self.return_station_name = return_station_name
-        self.distance = distance
-        self.duration = duration
-
-
-    def from_journey_record(record):
-        return Journey(
-            record.departure_time,
-            record.return_time,
-            record.departure_id,
-            record.departure_name,
-            record.return_id,
-            record.return_name,
-            record.distance,
-            record.duration
-        )
-
-    @property
-    def duration(self):
-        return self._duration
-
-    @duration.setter
-    def duration(self, duration):
-        if isinstance(duration, str):
-            duration = int(duration)
-        if not isinstance(duration, int):
-            raise ValueError('???')
-        self._duration = duration
-
-    @property
-    def distance(self):
-        return self._distance
-
-    @distance.setter
-    def distance(self, distance):
-        if isinstance(distance, str):
-            if distance == '':
-                distance = 0.0
-            else:
-                distance = float(distance)
-        if not isinstance(distance, float):
-            raise ValueError('???')
-        self._distance = distance
-
-    @property
-    def return_station_name(self):
-        return self._return_station_name
-
-    @return_station_name.setter
-    def return_station_name(self, return_station_name):
-        if not isinstance(return_station_name, str):
-            raise ValueError('???')
-        self._return_station_name = return_station_name
-
-    @property
-    def return_station_id(self):
-        return self._return_station_id
-
-    @return_station_id.setter
-    def return_station_id(self, return_station_id):
-        if not isinstance(return_station_id, str):
-            raise ValueError('???')
-        self._return_station_id = return_station_id
-
-    @property
-    def departure_station_name(self):
-        return self._departure_station_name
-
-    @departure_station_name.setter
-    def departure_station_name(self, departure_station_name):
-        if not isinstance(departure_station_name, str):
-            raise ValueError('???')
-        self._departure_station_name = departure_station_name
-
-    @property
-    def departure_station_id(self):
-        return self._departure_station_id
-
-    @departure_station_id.setter
-    def departure_station_id(self, departure_station_id):
-        if not isinstance(departure_station_id, str):
-            raise ValueError('???')
-        self._departure_station_id = departure_station_id
-
-    @property
-    def return_time(self):
-        return self._return_time
-
-    @return_time.setter
-    def return_time(self, return_time):
-        if isinstance(return_time, str):
-            return_time = datetime.fromisoformat(return_time)
-        if not isinstance(return_time, datetime):
-            raise ValueError('???')
-        self._return_time = return_time
-
-    @property
-    def departure_time(self):
-        return self._departure_time
-
-    @departure_time.setter
-    def departure_time(self, departure_time):
-        if isinstance(departure_time, str):
-            departure_time = datetime.fromisoformat(departure_time)
-        if not isinstance(departure_time, datetime):
-            raise ValueError('???')
-        self._departure_time = departure_time
-
-    def __repr__(self):
-        return (
-            'Journey('
-            f'{str(self.departure_time)!r}, '
-            f'{str(self.return_time)!r}, '
-            f'{self.departure_station_id!r}, '
-            f'{self.departure_station_name!r}, '
-            f'{self.return_station_id!r}, '
-            f'{self.return_station_name!r}, '
-            f'{self.distance!r}, '
-            f'{self.duration!r}'
-            ')'
-        )
-#+end_src
-
-We can check with the parser if all the data is now parseable.
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-import traceback
-
-files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
-
-<<JourneyParser>>
-
-def try_parse(journey_record):
-    try:
-        return Journey.from_journey_record(journey_record)
-    except Exception as e:
-        print(traceback.format_exc(), end='')
-        raise e
-
-for f in files:
-    reader = csv.reader(open(f, 'r', newline=''))
-    # skip the header
-    next(reader)
-    list(map(try_parse, map(JourneyRecord._make, reader)))
-#+end_src
-
-#+RESULTS[6b314abaa957fbe31922465789c4ad91639619ee]:
-
-Since this results in no output, we have a good enough parser for the data.
-
-We can dump the data into an sqlite3 database.
-
-#+header: :cache yes
-#+header: :dir ../dataset/
-#+begin_src python
-import sqlite3
-
-con = sqlite3.connect("journey.db")
-cur = con.cursor()
-query = """
-CREATE TABLE IF NOT EXISTS journey(
-  departure_time,
-  return_time,
-  departure_station_id,
-  departure_station_name,
-  return_station_id,
-  return_station_name,
-  distance,
-  duration
-)
-"""
-cur.execute(query)
-tables = cur.execute("SELECT name from sqlite_master")
-
-<<JourneyParser>>
-
-import csv
-
-files = ['2021-05.csv', '2021-06.csv', '2021-07.csv']
-for f in files:
-    reader = csv.reader(open(f, 'r', newline=''))
-    # skip the header
-    next(reader)
-    for journey in map(
-            Journey.from_journey_record,
-            (map(JourneyRecord._make, reader))):
-        cur.execute(
-            "INSERT INTO journey VALUES(?, ?, ?, ?, ?, ?, ? ,?)",
-            (journey.departure_time,
-             journey.return_time,
-             journey.departure_station_id,
-             journey.departure_station_name,
-             journey.return_station_id,
-             journey.return_station_name,
-             journey.distance,
-             journey.duration)
-        )
-con.commit()
-con.close()
-#+end_src
-
-#+RESULTS[a754e722ce2e73a672bfd92b059904ac186de661]:
-
-And then look up stuff I guess.
-
-#+header: :dir ../dataset
-#+begin_src python
-import sqlite3
-
-con = sqlite3.connect("journey.db")
-query = "SELECT * FROM journey LIMIT 1"
-res=con.execute(query)
-print(res.fetchone())
-con.close()
-#+end_src
-
-#+RESULTS:
-: ('2021-05-31 23:57:25', '2021-06-01 00:05:46', '094', 'Laajalahden aukio', '100', 'Teljäntie', 2043.0, 500)
-
-And then push to a psql server
-
-#+begin_src sh
-podman network create postgres
-podman run --rm -d \
-       --name postgres-server \
-       --network=postgres \
-       -p5432:5432 \
-       -e POSTGRES_PASSWORD=postgres \
-       postgres
-#+end_src
-
-#+header: :tangle ../dataset/export-to-psql-requirements.txt
-#+begin_src text
-psycopg2-binary
-#+end_src
-
-#+header: :tangle ../dataset/export-to-psql.py
-#+begin_src python
-import psycopg2
-import os
-
-
-conn = psycopg2.connect(
-    database=os.environ['PSQL_POSTGRES_DB'],
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-
-conn.autocommit = True
-
-from psycopg2.errors import DuplicateDatabase
-
-try:
-    with conn.cursor() as cur:
-        cur.execute("CREATE DATABASE hcb")
-except DuplicateDatabase:
-    pass
-finally:
-    conn.close()
-
-conn = psycopg2.connect(
-    database='hcb',
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-conn.autocommit = False
-
-SQL = """
-CREATE TABLE IF NOT EXISTS journey (
-departure_time TIMESTAMP,
-return_time TIMESTAMP,
-departure_station_id TEXT,
-departure_station_name TEXT,
-return_station_id TEXT,
-return_station_name TEXT,
-distance FLOAT,
-duration INTEGER
-)
-"""
-
-cur = conn.cursor()
-cur.execute(SQL)
-SQL = "INSERT INTO journey VALUES(%s, %s, %s, %s, %s, %s, %s, %s)"
-
-import sqlite3
-
-scon = sqlite3.connect("journey.db")
-query = "SELECT * FROM journey"
-res=scon.execute(query)
-
-<<JourneyParser>>
-
-for i, journey in enumerate(map(Journey.from_journey_record, map(JourneyRecord._make, res.fetchall()))):
-    cur.execute(
-        SQL,
-        (
-            journey.departure_time,
-            journey.return_time,
-            journey.departure_station_id,
-            journey.departure_station_name,
-            journey.return_station_id,
-            journey.return_station_name,
-            journey.distance,
-            journey.duration
-        )
-    )
-    if i % 1000 == 0:
-        print(i)
-
-conn.commit()
-scon.close()
-conn.close()
-#+end_src
-
-Need an index if I want to implement stable sorting.
-
-#+begin_src sql
-ALTER TABLE journey
-ADD COLUMN id SERIAL PRIMARY KEY;
-#+end_src
-
-And some indexes to speed up querying
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX distance_index
-ON journey(distance);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX duration_index
-ON journey(duration);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX departure_station_index
-ON journey(departure_station_name);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-#+begin_src sql :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-CREATE INDEX return_station_index
-ON journey(return_station_name);
-#+end_src
-
-#+RESULTS:
-| CREATE INDEX |
-|--------------|
-
-How do I get this bad boy to Google SQL cheaply?
-
-Almost all lines in the original csv's contain dups.
-
-Here's a script that merges the files into one and deletes all dups.
-
-#+header: :dir ../dataset
-#+begin_src bash
-cat <(tail +2 2021-05.csv) \
-    <(tail +2 2021-06.csv) \
-    <(tail +2 2021-07.csv) \
-    | sort | uniq > journeys.csv
-#+end_src
-
-#+header: :dir ../dataset
-#+begin_src sh
-wc -l 2021-0?.csv journeys.csv
-#+end_src
-
-#+RESULTS:
-|  814677 | 2021-05.csv  |
-| 1223483 | 2021-06.csv  |
-| 1208845 | 2021-07.csv  |
-| 1623501 | journeys.csv |
-| 4870506 | total        |
-
-*** We want statistics
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT COUNT(*) AS departures
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-| departures |
-|------------|
-|       4930 |
-
-#+begin_src sql
-SELECT COUNT(*) from journey
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7);
-#+end_src
-
-#+RESULTS:
-|   count |
-|---------|
-| 3247002 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT COUNT(*) AS returns
-FROM journey
-JOIN our_station
-ON journey.return_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-| returns |
-|---------|
-|    5072 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT AVG(distance) as average_journey
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-|   average_journey |
-|-------------------|
-| 3655.007302231237 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT AVG(distance) as average_journey
-FROM journey
-JOIN our_station
-ON journey.return_station_id = our_station.id;
-#+end_src
-
-#+RESULTS:
-|    average_journey |
-|--------------------|
-| 3773.3036277602523 |
-
-#+begin_src sql
-WITH station AS (
-    SELECT *
-    FROM station
-    WHERE fid = 1
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT AVG(distance) as average_departure_distance
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as avg_departure_distance,
-    (
-        SELECT AVG(distance) as average_return_distance
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as avg_return_distance
-)
-SELECT avg_return_distance, avg_departure_distance
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-#+end_src
-
-#+RESULTS:
-| avg_return_distance | avg_departure_distance |
-|---------------------+------------------------|
-|  3773.3036277602523 |      3655.007302231237 |
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 1
-)
-SELECT return_station_id, return_station_name, COUNT(return_station_id)
-FROM journey
-JOIN our_station
-ON journey.departure_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-GROUP BY return_station_name, journey.return_station_id
-ORDER BY count DESC
-LIMIT 5;
-#+end_src
-
-#+RESULTS:
-| return_station_id | return_station_name      | count |
-|-------------------+--------------------------+-------|
-|               401 | Koivusaari (M)           |   376 |
-|               501 | Hanasaari                |   292 |
-|               057 | Lauttasaaren ostoskeskus |   246 |
-|               055 | Puistokaari              |   224 |
-|               505 | Westendinasema           |   222 |
-
-#+begin_src sql
-\set fid 1
-
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = :fid
-)
-SELECT departure_station_id, departure_station_name, COUNT(*)
-FROM journey
-JOIN our_station
-ON return_station_id = our_station.id
-WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-GROUP BY departure_station_name, departure_station_id
-ORDER BY count DESC
-LIMIT 5;
-#+end_src
-
-#+RESULTS:
-| departure_station_id | departure_station_name   | count |
-|----------------------+--------------------------+-------|
-|                  401 | Koivusaari (M)           |   200 |
-|                  055 | Puistokaari              |   121 |
-|                  595 | Westendintie             |   105 |
-|                  030 | Itämerentori             |    93 |
-|                  057 | Lauttasaaren ostoskeskus |    81 |
-
-#+begin_src sql
-WITH station AS (
-    SELECT *
-    FROM station
-    WHERE fid = 1
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as departures,
-    ( SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-    ) as returns
-)
-SELECT returns, departures
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-#+end_src
-
-#+RESULTS:
-| returns | departures |
-|---------+------------|
-|    1410 |       4930 |
-
-*** A random station
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-SELECT fid from station
-ORDER BY RANDOM()
-LIMIT 1;
-#+end_src
-
-#+RESULTS:
-| fid |
-|-----|
-| 344 |
-
-*** Top 5 destinations
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
-
-#+begin_src sql
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = 320
-),
-top_destinations AS (
-     SELECT return_station_id, COUNT(*)
-     FROM journey
-     JOIN our_station
-     ON journey.departure_station_id = our_station.id
-     WHERE EXTRACT(MONTH FROM departure_time) IN (5, 6, 7)
-     GROUP BY return_station_id
-     ORDER BY count DESC
-     LIMIT 5
-)
-SELECT station.fid as id, station.finnish_name, count
-FROM top_destinations
-JOIN station
-ON station.id = top_destinations.return_station_id
-ORDER BY count DESC;
-#+end_src
-
-#+RESULTS:
-|  id | finnish_name         | count |
-|-----+----------------------+-------|
-| 322 | Herttoniemi (M)      |   378 |
-| 321 | Petter Wetterin tie  |   200 |
-| 320 | Abraham Wetterin tie |   165 |
-| 330 | Porolahden koulu     |   161 |
-| 332 | Tulisuontie          |    86 |
 
 *** Station CSV
 :LOGBOOK:
 CLOCK: [2023-04-08 Sat 00:15]--[2023-04-08 Sat 00:58] =>  0:43
 :END:
-
-Here's a parser for the station CSV.
-
-#+name: StationTypes
-#+begin_src python
-from collections import namedtuple
-
-StationRecord = namedtuple(
-    'StationRecord',
-    'fid,id,finnish_name,swedish_name,english_name,finnish_address,swedish_address,finnish_city,swedish_city,operator,capacity,x,y')
-
-class Station:
-    def __init__(
-            self,
-            fid,
-            id,
-            finnish_name,
-            swedish_name,
-            english_name,
-            finnish_address,
-            swedish_address,
-            finnish_city,
-            swedish_city,
-            operator,
-            capacity,
-            x,
-            y
-    ):
-        self.fid = fid
-        self.id = id
-        self.finnish_name = finnish_name
-        self.swedish_name = swedish_name
-        self.english_name = english_name
-        self.finnish_address = finnish_address
-        self.swedish_address = swedish_address
-        self.finnish_city = finnish_city
-        self.swedish_city = swedish_city
-        self.operator = operator
-        self.capacity = capacity
-        self.x = x
-        self.y = y
-
-    @staticmethod
-    def from_station_record(record):
-        return Station(
-            record.fid,
-            record.id,
-            record.finnish_name,
-            record.swedish_name,
-            record.english_name,
-            record.finnish_address,
-            record.swedish_address,
-            record.finnish_city,
-            record.swedish_city,
-            record.operator,
-            record.capacity,
-            record.x,
-            record.y
-        )
-
-    def __repr__(self):
-        return (
-            'Station('
-            f'{str(self.fid)!r}, '
-            f'{self.id!r}, '
-            f'{self.finnish_name!r}, '
-            f'{self.swedish_name!r}, '
-            f'{self.english_name!r}, '
-            f'{self.finnish_address!r}, '
-            f'{self.swedish_address!r}, '
-            f'{self.finnish_city!r},'
-            f'{self.swedish_city!r},'
-            f'{self.operator!r},'
-            f'{str(self.capacity)!r},'
-            f'{str(self.x)!r},'
-            f'{str(self.y)!r}'
-            ')'
-        )
-
-    @property
-    def y(self):
-        return self._y
-
-    @y.setter
-    def y(self, y):
-        if isinstance(y, str):
-            y = float(y)
-
-        if not isinstance(y, float):
-            raise ValueError()
-        self._y = y
-
-    @property
-    def x(self):
-        return self._x
-
-    @x.setter
-    def x(self, x):
-        if isinstance(x, str):
-            x = float(x)
-
-        if not isinstance(x, float):
-            raise ValueError()
-        self._x = x
-
-    @property
-    def capacity(self):
-        return self._capacity
-
-    @capacity.setter
-    def capacity(self, capacity):
-        if isinstance(capacity, str):
-            capacity = int(capacity)
-
-        if not isinstance(capacity, int):
-            raise ValueError()
-        self._capacity = capacity
-
-    @property
-    def operator(self):
-        return self._operator
-
-    @operator.setter
-    def operator(self, operator):
-        if not isinstance(operator, str):
-            raise ValueError()
-        self._operator = operator
-
-    @property
-    def swedish_address(self):
-        return self._swedish_address
-
-    @swedish_address.setter
-    def swedish_address(self, swedish_address):
-        if not isinstance(swedish_address, str):
-            raise ValueError()
-        self._swedish_address = swedish_address
-
-    @property
-    def finnish_address(self):
-        return self._finnish_address
-
-    @finnish_address.setter
-    def finnish_address(self, finnish_address):
-        if not isinstance(finnish_address, str):
-            raise ValueError()
-        self._finnish_address = finnish_address
-
-    @property
-    def english_name(self):
-        return self._english_name
-
-    @english_name.setter
-    def english_name(self, english_name):
-        if not isinstance(english_name, str):
-            raise ValueError()
-        self._english_name = english_name
-
-    @property
-    def swedish_name(self):
-        return self._swedish_name
-
-    @swedish_name.setter
-    def swedish_name(self, swedish_name):
-        if not isinstance(swedish_name, str):
-            raise ValueError()
-        self._swedish_name = swedish_name
-
-    @property
-    def finnish_name(self):
-        return self._finnish_name
-
-    @finnish_name.setter
-    def finnish_name(self, finnish_name):
-        if not isinstance(finnish_name, str):
-            raise ValueError()
-        self._finnish_name = finnish_name
-
-    @property
-    def id(self):
-        return self._id
-
-    @id.setter
-    def id(self, id):
-        if not isinstance(id, str):
-            raise ValueError()
-        self._id = id
-
-    @property
-    def fid(self):
-        return self._fid
-
-    @fid.setter
-    def fid(self, fid):
-        if isinstance(fid, str):
-            fid = int(fid)
-        if not isinstance(fid, int):
-            raise ValueError()
-        self._fid = fid
-#+end_src
-
-#+RESULTS: StationTypes
-
-
-Here's how I pushed the stuff into psql.
-
-#+header: :tangle ../dataset/station-to-sql-requirements.txt
-#+begin_src text
-psycopg2-binary
-#+end_src
-
-#+header: :tangle ../dataset/station-to-sql.py
-#+header: :dir ../dataset/
-#+begin_src python
-import csv
-import pprint
-import traceback
-import psycopg2
-import os
-<<StationTypes>>
-
-file = 'asemat.csv'
-
-reader = csv.reader(open(file, 'r', newline=''))
-# skip header
-next(reader)
-stations = map(Station.from_station_record, map(StationRecord._make, reader))
-
-
-conn = psycopg2.connect(
-    database='hcb',
-    user=os.environ['PSQL_USER'],
-    password=os.environ['PSQL_PASS'],
-    host=os.environ['PSQL_HOST'],
-    port=os.environ['PSQL_PORT']
-)
-
-SQL = """
-CREATE TABLE IF NOT EXISTS station (
-  fid INTEGER PRIMARY KEY,
-  id TEXT,
-  finnish_name TEXT,
-  swedish_name TEXT,
-  english_name TEXT,
-  finnish_address TEXT,
-  swedish_address TEXT,
-  finnish_city TEXT,
-  swedish_city TEXT,
-  operator TEXT,
-  capacity INTEGER,
-  x FLOAT,
-  y FLOAT
-)
-"""
-
-cur = conn.cursor()
-cur.execute(SQL)
-
-SQL = "INSERT INTO station VALUES(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"
-
-for station in stations:
-    cur.execute(SQL, (
-        station.fid,
-        station.id,
-        station.finnish_name,
-        station.swedish_name,
-        station.english_name,
-        station.finnish_address,
-        station.swedish_address,
-        station.finnish_city,
-        station.swedish_city,
-        station.operator,
-        station.capacity,
-        station.x,
-        station.y
-    ))
-
-conn.commit()
-conn.close()
-#+end_src
-
-#+RESULTS:
 
 ** Write the frontend
 :LOGBOOK:
@@ -1395,24 +542,6 @@ CLOCK: [2023-04-06 Thu 10:56]--[2023-04-06 Thu 11:23] =>  0:27
 CLOCK: [2023-04-02 Sun 10:22]--[2023-04-02 Sun 12:10] =>  1:48
 :END:
 
-Now that we have an sqlite database of the journey data, we can start implementing its view.  The “backend” used is going to be the sqlite database.
-
-Spent the first 45 minutes fighting with setuptools because the directory I had the package in contained a space, great success.
-
-Created project starter with command [[shell:cookiecutter gh:Pylons/pyramid-cookiecutter-starter]].  Project is in directory [[file:hcbf/]].
-
-Journeys list view now exists, it fetches data straight from an sqlite database.  Implements pagination and the recommended fields.
-
-Converted the frontend from pyramid to flask.
-
-Added support for pgsql data source.
-
-Implemented the stations view.
-
-Added pagination to stations view.
-
-Implemented filtering by month in single station view.
-
 ** Write data import
 :LOGBOOK:
 CLOCK: [2023-04-09 Sun 23:12]--[2023-04-10 Mon 01:01] =>  1:49
@@ -1421,23 +550,11 @@ CLOCK: [2023-04-09 Sun 19:13]--[2023-04-09 Sun 23:13] =>  4:00
 
 ** Refactor into frontend & backend
 :LOGBOOK:
+CLOCK: [2023-04-11 Tue 19:44]--[2023-04-11 Tue 19:48] =>  0:04
 CLOCK: [2023-04-10 Mon 23:22]--[2023-04-11 Tue 00:34] =>  1:12
 CLOCK: [2023-04-10 Mon 21:00]--[2023-04-10 Mon 23:00] =>  2:00
 CLOCK: [2023-04-10 Mon 16:45]--[2023-04-10 Mon 20:27] =>  3:42
 :END:
-
-
-Currenly “the app” consists of a single server and an SQL database
-
-The server:
-+ Accepts HTTP requests from end users
-+ Fetches data from the database with prepared SQL statements
-+ Renders data into HTML pages
-+ Responds to the end user’s request
-
-One of the requirements outlined in the exercise is to have a [[id:9916A29B-46A5-4BC2-94E3-F9165C036275][separate backend service]] for querying data.  Currently that service is a SQL database instance.  To match the exercise criteria, I need to create a facade service to the database instance.  The facade should follow the [[https://www.ics.uci.edu/~fielding/pubs/dissertation/rest_arch_style.htm][REST architectural style]].
-
-Moved “the frontend” to to use “the backend” when rendering =/journeys=.
 
 ** Mock up journeys list view
 :LOGBOOK:
@@ -1453,1596 +570,24 @@ CLOCK: [2023-04-06 Thu 14:59]--[2023-04-06 Thu 15:45] =>  0:46
 CLOCK: [2023-04-06 Thu 13:21]--[2023-04-06 Thu 13:41] =>  0:20
 :END:
 
-I was intending to host using cloud run, but seems app engine would be a nice option as well.  Example pulled from here [[https://cloud.google.com/appengine/docs/standard/python3/building-app/writing-web-service]].
-
-#+header: :mkdirp yes :tangle app-engine/templates/index.html
-#+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <title>Datastore and Firebase Auth Example</title>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Datastore and Firebase Auth Example</h1>
-    <h2>Last 10 visits</h2>
-    {% for time in times %}
-      <p>{{ time }}</p>
-    {% endfor %}
-  </body>
-</html>
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/static/script.js
-#+begin_src js
-'use strict';
-
-window.addEventListener('load', function () {
-
-  console.log("Hello World!");
-
-});
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/static/style.css
-#+begin_src css
-body {
-  font-family: "helvetica", sans-serif;
-  text-align: center;
-}
-#+end_src
-
-#+header: :mkdirp yes :tangle app-engine/main.py
-#+begin_src python
-import datetime
-
-from flask import Flask, render_template
-
-app = Flask(__name__)
-
-
-@app.route('/')
-def root():
-    # For the sake of example, use static information to inflate the
-    # template.  This will be replaced with real information in later
-    # steps.
-    dummy_times = [
-        datetime.datetime(2018, 1, 1, 10, 0, 0),
-        datetime.datetime(2018, 1, 2, 10, 30, 0),
-        datetime.datetime(2018, 1, 3, 11, 0, 0),
-    ]
-
-    return render_template('index.html', times=dummy_times)
-
-
-if __name__ == '__main__':
-    # This is used when running locally only. When deploying to Google
-    # App Engine, a webserver process such as Gunicorn will serve the
-    # app. This can be configured by adding an `entrypoint` to
-    # app.yaml.  Flask's development server will automatically serve
-    # static files in the "static" directory. See:
-    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once
-    # deployed, App Engine itself will serve those files as configured
-    # in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
-#+end_src
-
-#+header: :tangle app-engine/requirements.txt
-#+begin_src text
-Flask==2.1.0
-#+end_src
-
-#+header: :tangle app-engine/.gcloudignore
-#+begin_src text
-# This file specifies files that are *not* uploaded to Google Cloud
-# using gcloud. It follows the same syntax as .gitignore, with the
-# addition of "#!include" directives (which insert the entries of the
-# given .gitignore-style file at that point).
-#
-# For more information, run:
-#   $ gcloud topic gcloudignore
-#
-.gcloudignore
-# If you would like to upload your .git directory, .gitignore file or files
-# from your .gitignore file, remove the corresponding line
-# below:
-.git
-.gitignore
-
-# Python pycache:
-__pycache__/
-# Ignored by the build system
-/setup.cfg
-app-engine
-#+end_src
-
-app.yaml reference is here [[https://cloud.google.com/appengine/docs/standard/reference/app-yaml?tab=python]].
-
-#+header: :tangle app-engine/app.yaml
-#+begin_src yaml
-runtime: python39
-
-handlers:
-  # This configures Google App Engine to serve the files in the app's
-  # static directory.
-- url: /static
-  static_dir: static
-
-  # This handler routes all requests not caught above to your main
-  # app. It is required when static routes are defined, but can be
-  # omitted (along with the entire handlers section) when there are no
-  # static files defined.
-- url: /.*
-  script: auto
-#+end_src
-
-Here's an updated main.py that pushes and pulls data from datastore.
-
-#+header: :tangle app-engine/main.py
-#+begin_src python
-from google.cloud import datastore
-import datetime
-from flask import Flask, render_template
-
-datastore_client = datastore.Client()
-
-def store_time(dt):
-    entity = datastore.Entity(key=datastore_client.key('visit'))
-    entity.update({
-        'timestamp': dt
-    })
-
-    datastore_client.put(entity)
-
-
-def fetch_times(limit):
-    query = datastore_client.query(kind='visit')
-    query.order = ['-timestamp']
-
-    times = query.fetch(limit=limit)
-
-    return times
-
-app = Flask(__name__)
-
-@app.route('/')
-def root():
-    # Store the current access time in Datastore.
-    store_time(datetime.datetime.now(tz=datetime.timezone.utc))
-
-    # Fetch the most recent 10 access times from Datastore.
-    times = fetch_times(10)
-
-    return render_template(
-        'index.html', times=times)
-
-if __name__ == '__main__':
-    # This is used when running locally only. When deploying to Google
-    # App Engine, a webserver process such as Gunicorn will serve the
-    # app. This can be configured by adding an `entrypoint` to
-    # app.yaml.  Flask's development server will automatically serve
-    # static files in the "static" directory. See:
-    # http://flask.pocoo.org/docs/1.0/quickstart/#static-files. Once
-    # deployed, App Engine itself will serve those files as configured
-    # in app.yaml.
-    app.run(host='127.0.0.1', port=8080, debug=True)
-#+end_src
-
-And here's an updated index.html
-
-#+header: :tangle app-engine/templates/index.html
-#+begin_src jinja2
-<!doctype html>
-<html>
-  <head>
-    <title>Datastore and Firebase Auth Example</title>
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  </head>
-  <body>
-    <h1>Datastore and Firebase Auth Example</h1>
-    <h2>Last 10 visits</h2>
-    {% for time in times %}
-      <p>{{ time['timestamp'] }}</p>
-    {% endfor %}
-  </body>
-</html>
-#+end_src
-
-#+header: :tangle app-engine/requirements.txt
-#+begin_src text
-Flask==2.1.0
-google-cloud-datastore==2.7.1
-#+end_src
-
-Had to run the following to successfully connect to datastore:
-
-#+begin_src sh
-gcloud auth application-default login
-GCLOUD_PROJECT=focal-disk-380217 ./app-engine/bin/python main.py
-#+end_src
-
 ** Set up cloud SQL
 :LOGBOOK:
 CLOCK: [2023-04-07 Fri 14:12]--[2023-04-07 Fri 14:26] =>  0:14
 :END:
 
 * Implementation
-
-** The frontend
-:PROPERTIES:
-:header-args: :mkdirp yes :comments link
-:END:
-
-“The frontend” offers the following views:
-+ [[id:3021535E-D457-4E21-B296-4035BCE2E439][A journey list]]
-+ [[id:89C5ADDA-6E9D-485B-877F-2A47D765789A][A station listing]]
-+ [[id:8B7AC0C5-E098-401C-936F-9B8AA51B8AB4][A more specific listing of a station]].
-
-It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
-
-*** Installing
-
-# TODO provide source code
-To be able to run “the frontend”, your site should have working Python interpreter.  You can download the sources for the front end once I make them available.
-
-Make sure you are at the root directory of the front end application before running the following commands:
-
-**** Create a virtual environment in the root directory
-
-#+begin_src sh
-python -m venv env
-#+end_src
-
-**** Install Python package dependencies
-
-#+begin_src sh
-./env/bin/pip install -r requirements.txt
-#+end_src
-
-**** Run the front end
-
-The front end is dependent on some external resources.  Handles to those resources are communicated via environment variables.
-
-Here’s a sample configuration file.  It is also provided as a part of “the frontend” source.
-
-#+header: :tangle hcbf/sample.env
-#+begin_src sh
-HCBF_HOST=127.0.0.1
-HCBF_PORT=5434
-HCBF_BACKEND_URL=http://127.0.0.1:5433
-#+end_src
-
-You can load the variables into your current shell session with the following commands:
-
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
-
-*Note:* The app will crash sooner or later if one of the environment variables is not properly set.  This is a very convenient way to notify the user of a configuration error.
-
-After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
-
-#+begin_src sh
-./env/bin/python main.py
-#+end_src
-
-*** Package requirements
-
-#+header: :tangle hcbf/requirements.txt
-#+begin_src python
-Flask
-psycopg2-binary
-requests
-#+end_src
-
-*** The application entrypoint (main.py)
-
-#+header: :tangle hcbf/main.py
-#+begin_src python
-from flask import Flask, render_template, request, redirect, url_for
-from dataclasses import dataclass
-import requests
-import os
-
-app = Flask(__name__)
-
-backend_url = os.environ['HCBF_BACKEND_URL']
-
-@dataclass
-class Journey:
-    departure_station_id: int
-    departure_station_name: str
-    return_station_id: int
-    return_station_name: str
-    distance: float
-    duration: int
-
-@app.route('/journeys')
-def journeys():
-    page = int(request.args.get('page', '1'))
-    search_term = request.args.get('search', '')
-    order_by = request.args.get('order_by')
-    direction = request.args.get('direction')
-
-    url = f'{backend_url}/journeys?page={page}'
-
-    if search_term:
-        url = f'{url}&search={search_term}'
-    if order_by:
-        url = f'{url}&order_by={order_by}'
-    if direction:
-        url = f'{url}&direction={direction}'
-
-    resp = requests.get(url)
-
-    resp.raise_for_status()
-
-    journeys = [Journey(**journey) for journey in resp.json()]
-
-    return render_template(
-        'journeys.html.j2',
-        journeys=journeys,
-        previous_page=max(page - 1, 1),
-        next_page=page + 1,
-        page=page,
-        search_term=search_term,
-        order_by=order_by,
-        direction=direction
-    )
-
-@dataclass
-class Station:
-    id: int
-    name: str
-    address: str
-
-@app.route('/stations')
-def stations():
-    page = max(1, int(request.args.get('page', '1')))
-    search_term = request.args.get('search', '')
-
-    url = f'{backend_url}/stations?page={page}'
-
-    if search_term:
-        url = f'{url}&search={search_term}'
-    resp = requests.get(url)
-    resp.raise_for_status()
-    stations = [Station(**station) for station in resp.json()]
-
-    previous_page = None if page == 1 else page - 1
-    next_page = page + 1
-    return render_template(
-        'stations.html.j2',
-        stations=stations,
-        previous_page=previous_page,
-        page=page,
-        next_page=next_page,
-        search_term=search_term
-    )
-
-
-@dataclass
-class StationRelationInfo:
-    id: int
-    name: str
-    journeys: int
-
-@dataclass
-class StationInfo:
-    name: str
-    address: str
-    x: float
-    y: float
-    journeys_started_here: int
-    journeys_ended_here: int
-    average_distance_started_here: int
-    average_distance_ended_here: int
-    top_destionations: list[StationRelationInfo]
-    top_origins: list[StationRelationInfo]
-
-
-@app.route('/station/<int:station_id>')
-def station(station_id):
-    months = request.args.getlist('month')
-    if months == []:
-        months = ('5', '6', '7')
-
-    months = tuple(map(int, months))
-    url = f'{backend_url}/stations/{station_id}?'
-
-    for month in months:
-        url = f'{url}month={month}&'
-
-    response = requests.get(url)
-    response.raise_for_status()
-    data = response.json()
-    station_info = StationInfo(
-        name=data['name'],
-        address=data['address'],
-        x=data['x'],
-        y=data['y'],
-        journeys_started_here=data['journeys_started_here'],
-        journeys_ended_here=data['journeys_ended_here'],
-        average_distance_started_here=\
-        data['average_distance_started_here'],
-        average_distance_ended_here=\
-        data['average_distance_ended_here'],
-        top_destionations=[StationRelationInfo(**value) for value in data['top_destinations']],
-        top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
-    )
-
-    return render_template(
-        'station.html.j2',
-        station=station_info,
-        months=months
-    )
-
-@app.route('/random-station')
-def random_station():
-    url = f'{backend_url}/random-station'
-    resp = requests.get(url)
-    resp.raise_for_status()
-    station_id = resp.json()
-    return redirect(
-        url_for('station', station_id=station_id)
-    )
-
-@app.route('/')
-def home():
-    return render_template('home.html.j2')
-
-if __name__ == "__main__":
-    host = os.environ['HCBF_HOST']
-    port = os.environ['HCBF_PORT']
-    app.run(host=host, port=port, debug=True)
-#+end_src
-
-#+header: :tangle hcbf/templates/base.html.j2
-#+begin_src jinja2
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    {% block head_plus %}
-    {% endblock head_plus %}
-    <title>
-      {% block title %}
-        Helsinki city bikes
-      {% endblock title %}
-    </title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
-  </head>
-  <body>
-    {% block navbar %}
-      <nav class="navbar navbar-expand-lg bg-light">
-        <div class="container-fluid">
-          <a class="navbar-brand" href="#">Helsinki City Bikes</a>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-          <div class="collapse navbar-collapse" id="navbarSupportedContent">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('home') }}">Home</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </nav>
-    {% endblock navbar %}
-    {% block content %}
-      <p>Implement the content block</p>
-    {% endblock content %}
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
-
-    {% block body_plus %}
-    {% endblock body_plus %}
-  </body>
-</html>
-#+end_src
-
-#+header: :tangle hcbf/templates/home.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block content %}
-  <div class="container">
-    <div class="row align-items-center">
-      <div class="col d-flex justify-content-center">
-        <p class="lead mt-5">
-          Pick a table category from the top nav bar, or...
-        </p>
-      </div>
-    </div>
-    <div class="row align-items-center">
-      <div class="col d-flex justify-content-center">
-        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
-      </div>
-    </div>
-  </div>
-{% endblock %}
-#+end_src
-
-#+header: :tangle hcbf/templates/journeys.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block head_plus %}
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
-{% endblock %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <h1>Journeys</h1>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <form>
-          <div class="input-group" id="form">
-            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
-            <button type="submit" class="btn btn-primary">Search</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead>
-              <tr>
-                <th>
-                  {% if order_by == 'departure_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='descending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'return_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='descending') }}">Return station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'distance' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='descending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'duration' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='descending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                  {% endif %}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for journey in journeys %}
-                <tr>
-                  <td>
-                    <a href="{{ url_for('station', station_id=journey.departure_station_id) }}">
-                      {{ journey.departure_station_name }}
-                    </a>
-                  </td>
-                  <td>
-                    <a href="{{ url_for('station', station_id=journey.return_station_id) }}">
-                      {{ journey.return_station_name }}
-                    </a>
-                  </td>
-                  <td>{{ journey.distance | round(1) }}</td>
-                  <td>{{ journey.duration  }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <ul class="pagination">
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="{{ url_for('journeys', page=previous_page, search=search_term, order_by=order_by, direction=direction) }}">
-              Previous
-            </a>
-          </li>
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="#">
-              {{ page }}
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link"
-               href="{{ url_for('journeys', page=next_page, search=search_term, order_by=order_by, direction=direction) }}">
-               Next
-            </a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-#+end_src
-
-#+header: :tangle hcbf/templates/stations.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <h1>Stations</h1>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <form>
-          <div class="input-group">
-            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
-            <button type="submit" class="btn btn-primary">Search</button>
-          </div>
-        </form>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col">
-        <div class="table-responsive">
-          <table class="table table-striped table-hover">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Address</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for station in stations %}
-                <tr>
-                  <td>
-                    <a href="{{ url_for('station', station_id=station.id) }}">
-                      {{ station.name }}
-                    </a>
-                  </td>
-                  <td>{{ station.address }}</td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-    <div class="row">
-      <div class="col d-flex justify-content-center">
-        <ul class="pagination">
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="{{ url_for('stations', page=previous_page, search=search_term) }}">
-              Previous
-            </a>
-          </li>
-          <li class="page-item">
-            <a
-              class="page-link"
-              href="#">
-              {{ page }}
-            </a>
-          </li>
-          <li class="page-item">
-            <a class="page-link"
-               href="{{ url_for('stations', page=next_page, search=search_term) }}">
-               Next
-            </a>
-          </li>
-        </ul>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-#+end_src
-
-#+header: :tangle hcbf/templates/station.html.j2
-#+begin_src jinja2
-{% extends "base.html.j2" %}
-
-{% block content %}
-  <div class="container">
-    <div class="row">
-      <div class="col-12 col-md-6">
-        <div class="row">
-          <div class="col">
-            <h3>Station</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.name }}</td>
-                  <td>{{ station.address }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <div class="row">
-              <div class="col">
-                <h3>Details</h3>
-              </div>
-            </div>
-            <form>
-              <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
-                     {% if 5 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="may">May</label>
-
-              <input type="checkbox" class="btn-check" id="june" autocomplete="off" name="month" value="6"
-                     {% if 6 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="june">June</label>
-
-              <input type="checkbox" class="btn-check" id="july" autocomplete="off" name="month" value="7"
-                     {% if 7 in months %}
-                       checked
-                     {% endif %}>
-              <label class="btn btn-outline-primary" for="july">July</label>
-
-              <button type="submit" class="btn btn-primary">Recompute</button>
-            </form>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Journeys started here</th>
-                  <th>Journeys ended here</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.journeys_started_here }}</td>
-                  <td>{{ station.journeys_ended_here }}</td>
-                </tr>
-              </tbody>
-              <thead>
-                <tr>
-                  <th>Average journey from here (m)</th>
-                  <th>Average journey to here (m)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.average_distance_started_here }}</td>
-                  <td>{{ station.average_distance_ended_here }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <h3>Top destinations</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Journeys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for journey in station.top_destinations %}
-                  <tr>
-                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
-                    <td>{{ journey.journeys }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col">
-            <h3>Top origins</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Station</th>
-                  <th>Journeys</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for journey in station['top_origins'] %}
-                  <tr>
-                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
-                    <td>{{ journey.journeys }}</td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-      <div class="col-12 col-md-6">
-        <div id="osm-map"></div>
-      </div>
-    </div>
-  </div>
-{% endblock content %}
-
-{% block body_plus %}
-  <script>
-    x = {{ station.x }}
-    y = {{ station.y }}
-  </script>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
-  <script src="{{ url_for('static', filename="osm.js") }}"></script>
-{% endblock body_plus %}
-#+end_src
-
-#+header: :tangle hcbf/static/osm.js
-#+begin_src js
-// Where you want to render the map.
-var element = document.getElementById('osm-map');
-
-// Height has to be set. You can do this in CSS too.
-element.style = 'height:600px;'
-
-// Create Leaflet map on map element.
-var map = L.map(element);
-
-// Add OSM tile layer to the Leaflet map.
-L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
-}).addTo(map);
-
-var target = L.latLng(y, x);
-
-map.setView(target, 13);
-
-L.marker(target)
-  .addTo(map);
-#+end_src
-
-#+header: :tangle hcbf/static/style.css
-#+begin_src css
-
-#+end_src
-
-We reuse the little parser classes I wrote when [[id:8FAC00D2-5DBC-4127-B7F6-EE8244DEAF7A][exploring the dataset]].
-
-#+header: :tangle hcbf/journey.py
-#+header: :noweb yes
-#+begin_src python
-<<JourneyParser>>
-#+end_src
-
-#+header: :tangle hcbf/station.py
-#+header: :noweb yes
-#+begin_src python
-<<StationTypes>>
-#+end_src
-
-** The backend
-
-“The backend” is a facade for “The database”.  “A client” may interface with “the backend” via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the “client”.
-
-It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
-
-*** Installing
-
-# TODO provide source code
-To be able to run “the backend”, your site should have working Python interpreter.  You can download the sources for “the backend” once I make them available.
-
-Make sure you are at the root directory of “the backend” before running the following commands:
-
-**** Create a virtual environment
-
-#+header: :dir hcbb/
-#+begin_src sh
-python -m venv env
-#+end_src
-
-**** Install dependencies
-
-#+header: :dir hcbb/
-#+begin_src sh
-./env/bin/pip install -r requirements.txt
-#+end_src
-
-**** Run the app
-
-“The backend” is dependent on some external resources.  Handles to those resources are communicated via environment variables.
-
-Here’s a sample configuration file.  It is also provided as a part of “the backend” source as =sample.env=.
-
-#+header: :mkdirp yes :tangle hcbb/sample.env
-#+begin_src sh
-PSQL_DB=hcb
-PSQL_USER=postgres
-PSQL_PASS=postgres
-PSQL_HOST=localhost
-PSQL_PORT=5432
-HCBB_HOST=127.0.0.1
-HCBB_PORT=5433
-#+end_src
-
-You can load the variables into your current shell session with the following commands:
-
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
-
-*Note:* The app will crash if one of the environment variables is not properly set.  This is a convenient way to notify the user of a configuration error.
-
-After you’ve installed a Python interpreter, downloaded the python package dependencies, and loaded up the env file, you can start a Python server with the following command:
-
-#+begin_src sh
-./env/bin/python main.py
-#+end_src
-
-*** Requirements
-
-#+header: :tangle hcbb/requirements.txt
-#+begin_src sh
-Flask
-flask_restful
-psycopg2-binary
-#+end_src
-
-*** db.py
-
-#+header: :tangle hcbb/db.py
-#+begin_src python
-import psycopg2
-from psycopg2.extensions import AsIs
-from dataclasses import dataclass
-
-@dataclass
-class GetStationsObject:
-    id: int
-    name: str
-    address: str
-
-class GetStationsParams:
-    def __init__(self, *, page, page_size, search_term):
-        self.page = page
-        self.page_size = page_size
-        self.search_term = search_term
-
-    @property
-    def page(self):
-        return self._page
-
-    @page.setter
-    def page(self, page):
-        if not isinstance(page, int):
-            raise TypeError('page must be an int')
-        if not page > 0:
-            raise ValueError('page must be ≥ 1')
-        self._page = page
-
-    @property
-    def page_size(self):
-        return self._page_size
-
-    @page_size.setter
-    def page_size(self, page_size):
-        if not isinstance(page_size, int):
-            raise TypeError('page_size must be an int')
-        if page_size > 50 or page_size < 5:
-            raise ValueError('page_size must be within [5, 50]')
-        self._page_size = page_size
-
-    @property
-    def search_term(self):
-        return self._search_term
-
-    @search_term.setter
-    def search_term(self, search_term):
-        if search_term is None:
-            search_term = ''
-        if not isinstance(search_term, str):
-            raise TypeError('search_term must be None or a str')
-        if len(search_term) > 50:
-            raise ValueError(
-                'search_term can not be longer than 50'
-            )
-        self._search_term = search_term
-
-    def sql_offset(self):
-        return (self.page - 1) * self.page_size
-
-    def sql_search_term(self):
-        return f'%{self.search_term}%'
-
-    def as_statement_params(self):
-        return {
-            'search_term': self.sql_search_term(),
-            'page_size': self.page_size,
-            'offset': self.sql_offset()
-        }
-
-@dataclass
-class GetJourneysObject:
-    departure_station_id: int
-    departure_station_name: str
-    return_station_id: int
-    return_station_name: str
-    distance: float
-    duration: int
-
-class GetJourneysParams:
-    order_by_mapping = {
-        'departure_station': 'journey.departure_station_name',
-        'return_station': 'journey.return_station_name',
-        'distance': 'journey.distance',
-        'duration': 'journey.duration',
-        None: 'journey.id'
-    }
-
-    direction_mapping = {
-        'ascending': 'ASC',
-        'descending': 'DESC',
-        None: 'ASC'
-    }
-
-    def __init__(self, *, page, page_size, search_term, order_by, direction):
-        self.page = page
-        self.page_size = page_size
-        self.search_term = search_term
-        self.order_by = order_by
-        self.direction = direction
-
-    @property
-    def page(self):
-        return self._page
-
-    @page.setter
-    def page(self, page):
-        if not isinstance(page, int):
-            raise TypeError('page must be an int')
-        if not page > 0:
-            raise ValueError('page must be ≥ 1')
-        self._page = page
-
-    @property
-    def page_size(self):
-        return self._page_size
-
-    @page_size.setter
-    def page_size(self, page_size):
-        if not isinstance(page_size, int):
-            raise TypeError('page_size must be an int')
-        if page_size > 50 or page_size < 5:
-            raise ValueError('page_size must be within [5, 50]')
-        self._page_size = page_size
-
-    @property
-    def search_term(self):
-        return self._search_term
-
-    @search_term.setter
-    def search_term(self, search_term):
-        if search_term is None:
-            search_term = ''
-        if not isinstance(search_term, str):
-            raise TypeError('search_term must be None or a str')
-        if len(search_term) > 50:
-            raise ValueError(
-                'search_term can not be longer than 50'
-            )
-        self._search_term = search_term
-
-    @property
-    def order_by(self):
-        return self._order_by
-
-    @order_by.setter
-    def order_by(self, order_by):
-        keys = GetJourneysParams.order_by_mapping.keys()
-        if order_by not in keys:
-            raise ValueError(f'order_by must be one of {keys}')
-        self._order_by = order_by
-
-    @property
-    def direction(self):
-        return self._direction
-
-    @direction.setter
-    def direction(self, direction):
-        keys = GetJourneysParams.direction_mapping.keys()
-        if direction not in keys:
-            raise ValueError(f'direction must be one of {keys}')
-        self._direction = direction
-
-    def sql_offset(self):
-        return (self.page - 1) * self.page_size
-
-    def sql_search_term(self):
-        return f'%{self.search_term}%'
-
-    def sql_order_by(self):
-        return AsIs(
-            GetJourneysParams.order_by_mapping[self.order_by]
-        )
-
-    def sql_direction(self):
-        return AsIs(
-            GetJourneysParams.direction_mapping[self.direction]
-        )
-
-    def as_statement_params(self):
-        return {
-            'search_term': self.sql_search_term(),
-            'order_by_column': self.sql_order_by(),
-            'direction': self.sql_direction(),
-            'page_size': self.page_size,
-            'offset': self.sql_offset()
-        }
-
-class DB:
-    def __init__(self, database, user, password, host, port):
-        self.database = database
-        self.user = user
-        self.password = password
-        self.host = host
-        self.port = port
-
-    def _connection(self):
-        return psycopg2.connect(
-            database=self.database,
-            user=self.user,
-            password=self.password,
-            host=self.host,
-            port=self.port
-        )
-
-    def get_random_station_id(self):
-        sql = """
-SELECT fid
-FROM station
-ORDER BY RANDOM()
-LIMIT 1
-        """
-
-        with self._connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql)
-                value = cursor.fetchone()
-        return value[0]
-
-    def get_journeys(self, params):
-        if not isinstance(params, GetJourneysParams):
-            raise TypeError('Expected a GetJourneysParams')
-
-        sql = """
-SELECT
-        departure_station.fid as departure_station_id,
-        departure_station_name,
-        return_station.fid as return_station_id,
-        return_station_name,
-        distance * 0.001,
-        duration / 60
-FROM journey
-JOIN station AS departure_station
-ON departure_station_id = departure_station.id
-JOIN station AS return_station
-ON return_station_id = return_station.id
-WHERE departure_station_name ILIKE %(search_term)s ESCAPE ''
-      OR return_station_name ILIKE %(search_term)s ESCAPE ''
-ORDER BY %(order_by_column)s %(direction)s, journey.id ASC
-LIMIT %(page_size)s
-OFFSET %(offset)s
-        """
-
-        sql_params = params.as_statement_params()
-        with self._connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, sql_params)
-                values = cursor.fetchall()
-        return list(map(lambda value: GetJourneysObject(*value), values))
-
-    def get_stations(self, params):
-        if not isinstance(params, GetStationsParams):
-            raise TypeError('Expected a GetStationsParams')
-        sql = """
-SELECT fid, finnish_name, finnish_address
-FROM station
-WHERE finnish_name ILIKE %(search_term)s ESCAPE ''
-    OR finnish_address ILIKE %(search_term)s ESCAPE ''
-ORDER BY finnish_name, finnish_address, fid ASC
-LIMIT %(page_size)s
-OFFSET %(offset)s
-        """
-        sql_params = params.as_statement_params()
-        with self._connection() as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(sql, sql_params)
-                values = cursor.fetchall()
-        return [GetStationsObject(*value) for value in values]
-
-    def _total_journeys_from_and_to_station(self, cursor, params):
-        sql = """
-WITH station AS (
-    SELECT id
-    FROM station
-    WHERE fid = %(id)s
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-    ) as departures,
-    ( SELECT COUNT(*)
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-    ) as returns
-)
-SELECT returns, departures
-FROM station
-JOIN statistics
-ON station.id = statistics.id
-        """
-        cursor.execute(sql, params)
-        return cursor.fetchone()
-
-    def _avg_distances_from_and_to_station(self, cursor, params):
-        sql = """
-WITH station AS (
-    SELECT id
-    FROM station
-    WHERE fid = %(id)s
-),
-statistics AS (
-    SELECT (
-        SELECT id FROM station
-    ), (
-        SELECT AVG(distance) as average_departure_distance
-        FROM journey
-        JOIN station
-        ON station.id = departure_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-    ) as avg_departure_distance,
-    (
-        SELECT AVG(distance) as average_return_distance
-        FROM journey
-        JOIN station
-        ON station.id = return_station_id
-        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-    ) as avg_return_distance
-)
-SELECT avg_return_distance, avg_departure_distance
-FROM station
-JOIN statistics
-ON station.id = statistics.id;
-        """
-
-        cursor.execute(sql, params)
-        return cursor.fetchone()
-
-    def _top_destination_stations(self, cursor, params):
-        sql = """
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = %(id)s
-),
-top_destinations AS (
-     SELECT return_station_id, COUNT(*)
-     FROM journey
-     JOIN our_station
-     ON journey.departure_station_id = our_station.id
-     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-     GROUP BY return_station_id
-     ORDER BY count DESC
-     LIMIT 5
-)
-SELECT station.fid as id, station.finnish_name, count
-FROM top_destinations
-JOIN station
-ON station.id = top_destinations.return_station_id
-ORDER BY count DESC
-        """
-        cursor.execute(sql, params)
-        return cursor.fetchall()
-
-    def _top_origin_stations(self, cursor, params):
-        sql = """
-WITH our_station AS (
-     SELECT id
-     FROM station
-     WHERE fid = %(id)s
-),
-top_destinations AS (
-     SELECT departure_station_id, COUNT(*)
-     FROM journey
-     JOIN our_station
-     ON journey.return_station_id = our_station.id
-     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
-     GROUP BY departure_station_id
-     ORDER BY count DESC
-     LIMIT 5
-)
-SELECT station.fid as id, station.finnish_name, count
-FROM top_destinations
-JOIN station
-ON station.id = top_destinations.departure_station_id
-ORDER BY count DESC
-        """
-        cursor.execute(sql, params)
-        return cursor.fetchall()
-
-    def _get_station(self, cursor, params):
-        sql = """
-SELECT finnish_name, finnish_address, x, y
-FROM station
-WHERE fid = %(id)s
-        """
-        cursor.execute(sql, params)
-        return cursor.fetchone()
-
-    def get_station_info(self, params):
-        if not isinstance(params, GetStationInfoParams):
-            raise TypeError('Expected a GetStationInfoParams')
-        sql_params = params.as_statement_params()
-        with self._connection() as connection:
-            with connection.cursor() as cursor:
-                station = self._get_station(cursor, sql_params)
-                total_journeys = self._total_journeys_from_and_to_station(cursor, sql_params)
-                average_distances = self._avg_distances_from_and_to_station(cursor, sql_params)
-                top_destinations = self._top_destination_stations(cursor, sql_params)
-                top_origins = self._top_origin_stations(cursor, sql_params)
-
-        destinations = [StationRelationInfo(*value) for value in top_destinations]
-        origins = [StationRelationInfo(*value) for value in top_origins]
-        return StationInfo(
-            name=station[0],
-            address=station[1],
-            x=station[2],
-            y=station[3],
-            journeys_started_here=total_journeys[1],
-            journeys_ended_here=total_journeys[0],
-            average_distance_started_here=average_distances[0],
-            average_distance_ended_here=average_distances[1],
-            top_destinations=destinations,
-            top_origins=origins
-        )
-
-class GetStationInfoParams:
-    def __init__(self, *, id, months):
-        self.id = id
-        self.months = months
-
-    def as_statement_params(self):
-        return {
-            'id': self.id,
-            'months': self.months
-        }
-
-@dataclass
-class StationRelationInfo:
-    id: int
-    name: str
-    journeys: int
-
-@dataclass
-class StationInfo:
-    name: str
-    address: str
-    x: float
-    y: float
-    journeys_started_here: int
-    journeys_ended_here: int
-    average_distance_started_here: int
-    average_distance_ended_here: int
-    top_destinations: list[StationRelationInfo]
-    top_origins: list[StationRelationInfo]
-#+end_src
-
-*** main.py
-
-#+header: :tangle hcbb/main.py
-#+begin_src python
-from flask import Flask, request
-from flask_restful import Api, Resource, fields, marshal_with
-from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
-import os
-
-app = Flask(__name__)
-api = Api(app)
-
-db_name = os.environ['PSQL_DB']
-db_user = os.environ['PSQL_USER']
-db_pass = os.environ['PSQL_PASS']
-db_host = os.environ['PSQL_HOST']
-db_port = os.environ['PSQL_PORT']
-
-journey = {
-    'departure_station_id': fields.Integer,
-    'departure_station_name': fields.String,
-    'return_station_id': fields.Integer,
-    'return_station_name': fields.String,
-    'distance': fields.Float,
-    'duration': fields.Integer
-}
-
-
-class JourneyList(Resource):
-    @marshal_with(journey)
-    def get(self):
-        page = int(request.args.get('page', '1'))
-        page_size = int(request.args.get('page_size', '10'))
-        search_term = request.args.get('search')
-        order_by = request.args.get('order_by')
-        direction = request.args.get('direction')
-
-        params = GetJourneysParams(
-            page=page,
-            page_size=page_size,
-            search_term=search_term,
-            order_by=order_by,
-            direction=direction
-        )
-
-        db = DB(db_name, db_user, db_pass, db_host, db_port)
-
-        result = db.get_journeys(params)
-        return result, 200
-
-station = {
-    'id': fields.Integer,
-    'name': fields.String,
-    'address': fields.String
-}
-
-class StationList(Resource):
-    @marshal_with(station)
-    def get(self):
-        page = int(request.args.get('page', '1'))
-        page_size = int(request.args.get('page_size', '10'))
-        search_term = request.args.get('search')
-
-        params = GetStationsParams(
-            page=page,
-            page_size=page_size,
-            search_term=search_term
-        )
-        db = DB(db_name, db_user, db_pass, db_host, db_port)
-        result = db.get_stations(params)
-        return result, 200
-
-station_relation_info = {
-    'id': fields.Integer,
-    'name': fields.String,
-    'journeys': fields.Integer,
-}
-
-station_info = {
-    'name': fields.String,
-    'address': fields.String,
-    'x': fields.Float,
-    'y': fields.Float,
-    'journeys_started_here': fields.Integer,
-    'journeys_ended_here': fields.Integer,
-    'average_distance_started_here': fields.Integer,
-    'average_distance_ended_here': fields.Integer,
-    'top_destinations': \
-    fields.List(fields.Nested(station_relation_info)),
-    'top_origins': \
-    fields.List(fields.Nested(station_relation_info))
-}
-
-class StationInfo(Resource):
-    @marshal_with(station_info)
-    def get(self, id):
-        id = int(id)
-        months = request.args.getlist('month')
-        if months == []:
-            months = ('5', '6', '7')
-        months = tuple(map(int, months))
-        db = DB(db_name, db_user, db_pass, db_host, db_port)
-        params = GetStationInfoParams(id=id, months=months)
-        result = db.get_station_info(params)
-        return result
-
-class RandomStation(Resource):
-    def get(self):
-        db = DB(db_name, db_user, db_pass, db_host, db_port)
-        return db.get_random_station_id()
-
-api.add_resource(JourneyList, '/journeys')
-api.add_resource(StationList, '/stations')
-api.add_resource(StationInfo, '/stations/<int:id>')
-api.add_resource(RandomStation, '/random-station')
-
-if __name__ == "__main__":
-    host = os.environ['HCBB_HOST']
-    port = os.environ['HCBB_PORT']
-    app.run(host=host, port=port, debug=True)
-#+end_src
-
-
 ** The database
-:PROPERTIES:
-:header-args:sql: :engine postgres :database hcb :dbuser postgres :dbpassword postgres :dbhost localhost :dbport 5432
-:END:
 
-Here's our database definition.  You can either execute these statements in an SQL prompt or use the ready-made python program provided at X.  Instructions for the python program are below.
-# TODO add link to python program
+/The database/ is a PostgreSQL database.  Here are the SQL statements that prepare it.  See the section [[#declare-the-database][Declare the database]] for setup instructions.
 
-#+header: :tangle hcbdb/create-database-hcb.sql :mkdirp yes
-#+header: :database postgres
+*** SQL statements
+
+#+name: create-database-stmt
 #+begin_src sql
 CREATE DATABASE hcb;
 #+end_src
 
-#+RESULTS:
-| CREATE DATABASE |
-|-----------------|
-
-#+name: create-table-journey
-#+header: :tangle hcbdb/create-table-journey.sql :mkdirp yes
+#+name: create-journey-stmt
 #+begin_src sql
 BEGIN;
 
@@ -3058,7 +603,7 @@ CREATE TABLE journey (
        duration INTEGER
 );
 
--- We need to sort on these columns
+-- We need to sort on the following columns
 CREATE INDEX distance_index
 ON journey(distance);
 
@@ -3074,18 +619,7 @@ ON journey(return_station_name);
 COMMIT;
 #+end_src
 
-#+RESULTS: create-table-journey
-| BEGIN        |
-|--------------|
-| CREATE TABLE |
-| CREATE INDEX |
-| CREATE INDEX |
-| CREATE INDEX |
-| CREATE INDEX |
-| COMMIT       |
-
-#+name: create-table-station
-#+header: :tangle hcbdb/create-table-station.sql :mkdirp yes
+#+name: create-station-stmt
 #+begin_src sql
 CREATE TABLE  station (
        fid INTEGER PRIMARY KEY,
@@ -3101,44 +635,109 @@ CREATE TABLE  station (
        capacity INTEGER,
        x FLOAT,
        y FLOAT
-)
+);
 #+end_src
 
-#+RESULTS: create-table-station
-| CREATE TABLE |
-|--------------|
+*** Database prep script
 
-** The data import
-:PROPERTIES:
-:header-args:python: :mkdirp yes
-:END:
+A python script provided below prepares the database for use.  Execution instructions are provided in section [[#declare-the-database][Declare the database]].
 
-“The data import” reads journey and station data from csv source files, performs some preprocessing and filtering, and dumps the result in to a PostgreSQL database instance.
+**** requirements.txt
 
-*** Stations
-
-#+header: :tangle hcbi/stations/requirements.txt :mkdirp yes
-#+begin_src text
-requests
+#+header: :tangle hcb-setup-database/requirements.txt
+#+begin_src python
 psycopg2-binary
 #+end_src
 
-#+begin_src sh
-set -a
-source sample.env
+**** main.py
+
+#+header: :noweb yes
+#+header: :tangle hcb-setup-database/main.py
+#+begin_src python
+import psycopg2
+import os
+
+psql_user = os.environ['PSQL_USERNAME']
+psql_pass = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+
+connection = psycopg2.connect(
+    database='postgres',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection\
+    .set_isolation_level(
+        psycopg2.extensions.ISOLATION_LEVEL_AUTOCOMMIT
+    )
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-database-stmt>>
+        """
+    )
+
+connection.close()
+
+connection = psycopg2.connect(
+    database='hcb',
+    user=psql_user,
+    password=psql_pass,
+    host=psql_host,
+    port=psql_port
+)
+connection.autocommit = False
+
+with connection.cursor() as cursor:
+    cursor.execute(
+        """
+<<create-journey-stmt>>
+        """
+    )
+    cursor.execute(
+        """
+<<create-station-stmt>>
+        """
+    )
+
+print('OK')
 #+end_src
 
-#+header: :tangle hcbi/stations/sample.env :mkdirp yes
-#+begin_src sh
-HCBI_STATION_SOURCE='https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv'
-PSQL_DATABASE=hcb
-PSQL_USERNAME=postgres
-PSQL_PASSWORD=postgres
-PSQL_HOST=127.0.0.1
-PSQL_PORT=5432
+** The data import
+
+Data import reads journey and station data from the internet.  This component has two separate pieces:
++ Journey import
++ Station import
+Which are glued together in main.py.
+
+*** main.py
+
+#+header: :tangle hcb-data-import/main.py
+#+begin_src python
+import journeys
+import stations
+
+if __name__ == "__main__":
+    stations.main()
+    journeys.main()
 #+end_src
 
-#+header: :tangle hcbi/stations/main.py :mkdirp yes
+*** requirements.txt
+
+#+header: :tangle hcb-data-import/requirements.txt :mkdirp yes
+#+begin_src text
+psycopg2-binary
+requests
+#+end_src
+
+*** Stations data import
+
+This is the part of data import that downloads station data, and pushes it to a PostgreSQL database instance.
+
+#+header: :tangle hcb-data-import/stations.py
 #+begin_src python
 import os
 import requests
@@ -3146,6 +745,13 @@ from collections import namedtuple
 import csv
 import json
 import psycopg2
+
+psql_database = os.environ['PSQL_DATABASE']
+psql_user = os.environ['PSQL_USERNAME']
+psql_password = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+station_sources = os.environ['HCBI_STATION_SOURCE']
 
 def download_network_file(networkfile):
     """Download a csv from the net, write to local site.
@@ -3498,11 +1104,11 @@ def push_to_sql(stationpath):
         ]
 
     connection = psycopg2.connect(
-        database=os.environ['PSQL_DATABASE'],
-        user=os.environ['PSQL_USERNAME'],
-        password=os.environ['PSQL_PASSWORD'],
-        host=os.environ['PSQL_HOST'],
-        port=os.environ['PSQL_PORT']
+        database=psql_database,
+        user=psql_user,
+        password=psql_password,
+        host=psql_host,
+        port=psql_port
     )
 
     insert_statement = """
@@ -3545,47 +1151,28 @@ VALUES (
     print('done')
     connection.close()
 
-if __name__ == "__main__":
-    stationpath = download_and_filter(os.environ['HCBI_STATION_SOURCE'])
+def main():
+    stationpath = \
+        download_and_filter(station_sources)
     push_to_sql(stationpath)
+
+if __name__ == "__main__":
+    main()
 #+end_src
 
-*** Journeys
+*** Journeys data import
 
 Functional requirements for the data import are:
-+ Don’t import journeys that lasted < 10 seconds
-+ Don’t import journeys that covered < 10 meters
++ Don't import journeys that lasted < 10 seconds
++ Don't import journeys that covered < 10 meters
 
 Here are some additional requirements I defined for the import process:
 + Some journeys were either abnormally long in duration or distance.  Filter out any journeys that are:
-  + longer than 600 minutes
+  + longer than 6 hours
   + longer than 150 kilometers
-+ Almost all journeys were duplicated in the CSV’s.  Delete any duplicates.
++ Almost all journeys were duplicated in the CSV's.  Delete duplicate entries.
 
-#+header: :tangle hcbi/journeys/requirements.txt :mkdirp yes
-#+begin_src text
-requests
-psycopg2-binary
-#+end_src
-
-# TODO tell more about me
-
-#+begin_src sh
-set -a
-source sample.env
-#+end_src
-
-#+header: :tangle hcbi/journeys/sample.env
-#+begin_src sh
-HCBI_SOURCE_FILES='https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv'
-PSQL_DATABASE=hcb
-PSQL_USERNAME=postgres
-PSQL_PASSWORD=postgres
-PSQL_HOST=127.0.0.1
-PSQL_PORT=5432
-#+end_src
-
-#+header: :tangle hcbi/journeys/main.py
+#+header: :tangle hcb-data-import/journeys.py :mkdirp yes
 #+begin_src python
 import requests
 import os
@@ -3596,6 +1183,14 @@ from datetime import datetime
 import json
 import psycopg2
 
+journey_sources = os.environ['HCBI_JOURNEY_SOURCES'].split(' ')
+psql_database = os.environ['PSQL_DATABASE']
+psql_user = os.environ['PSQL_USERNAME']
+psql_password = os.environ['PSQL_PASSWORD']
+psql_host = os.environ['PSQL_HOST']
+psql_port = os.environ['PSQL_PORT']
+
+print(journey_sources)
 def download_network_files(networkfiles):
     """Downloads csv's from the net and writes to site's disk.
 
@@ -3621,7 +1216,13 @@ def download_network_files(networkfiles):
                   f'to: {localpath}', sep='\n')
 
             with open(localpath, 'w') as localfile:
-                response = requests.get(networkpath)
+                # some weird interaction causes this request to fail
+                # inside a Docker container, if certificates are
+                # verified
+                response = requests.get(
+                    networkpath,
+                    verify=False,
+                )
                 response.raise_for_status()
                 localfile.write(response.text)
         paths.append(localpath)
@@ -3878,11 +1479,11 @@ def push_to_sql(journeypath):
         ]
 
     connection = psycopg2.connect(
-        database=os.environ['PSQL_DATABASE'],
-        user=os.environ['PSQL_USERNAME'],
-        password=os.environ['PSQL_PASSWORD'],
-        host=os.environ['PSQL_HOST'],
-        port=os.environ['PSQL_PORT']
+        database=psql_database,
+        user=psql_user,
+        password=psql_password,
+        host=psql_host,
+        port=psql_port
     )
 
     insert_statement = """
@@ -3911,16 +1512,1313 @@ VALUES (
         for i, journey in enumerate(journeys):
             dct = journey.to_dict()
             cursor.execute(insert_statement, dct)
-            if i % 1000 == 0:
+            if i % 100_000 == 0:
                 print(f'{i}/{len(journeys)}')
     connection.commit()
     print('done')
     connection.close()
 
+def main():
+    journeypath = download_and_filter(journey_sources)
+    push_to_sql(journeypath)
 
 if __name__ == "__main__":
-    journeypath = download_and_filter(os.environ['HCBI_SOURCE_FILES'].split(' '))
-    push_to_sql(journeypath)
+    main()
 #+end_src
 
-#+RESULTS:
+** The backend
+
+The backend is a facade for the database.  Initially the frontend made SQL calls directly, but one of the assignment requirements mandated a backend.  Of course PostgreSQL could be considered a backend, but maybe that is not what the assignment creators had in mind when they referred to a backend.
+
+A client may interface with the backend via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the client that interfaced with the backend.
+
+It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
+
+*** requirements.txt
+
+#+header: :tangle hcb-backend/requirements.txt
+#+begin_src sh
+Flask
+flask_restful
+psycopg2-binary
+#+end_src
+
+*** db.py
+
+This is the file that implements the logic that directly interfaces with PostgreSQL.
+
+The =*Params= classes guard the parameters that may be passed to SQL.  The classes =*Object= and =*Info= are wrapper classes for values returned from an SQL query.  The =DB= class performs queries and returns their results.
+
+#+header: :tangle hcb-backend/db.py
+#+begin_src python
+import psycopg2
+from psycopg2.extensions import AsIs
+from dataclasses import dataclass
+
+class GetStationsParams:
+    def __init__(self, *, page, page_size, search_term):
+        self.page = page
+        self.page_size = page_size
+        self.search_term = search_term
+
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, page):
+        if not isinstance(page, int):
+            raise TypeError('page must be an int')
+        if not page > 0:
+            raise ValueError('page must be ≥ 1')
+        self._page = page
+
+    @property
+    def page_size(self):
+        return self._page_size
+
+    @page_size.setter
+    def page_size(self, page_size):
+        if not isinstance(page_size, int):
+            raise TypeError('page_size must be an int')
+        if page_size > 50 or page_size < 5:
+            raise ValueError('page_size must be within [5, 50]')
+        self._page_size = page_size
+
+    @property
+    def search_term(self):
+        return self._search_term
+
+    @search_term.setter
+    def search_term(self, search_term):
+        if search_term is None:
+            search_term = ''
+        if not isinstance(search_term, str):
+            raise TypeError('search_term must be None or a str')
+        if len(search_term) > 50:
+            raise ValueError(
+                'search_term can not be longer than 50'
+            )
+        self._search_term = search_term
+
+    def sql_offset(self):
+        return (self.page - 1) * self.page_size
+
+    def sql_search_term(self):
+        return f'%{self.search_term}%'
+
+    def as_statement_params(self):
+        return {
+            'search_term': self.sql_search_term(),
+            'page_size': self.page_size,
+            'offset': self.sql_offset()
+        }
+
+class GetJourneysParams:
+    order_by_mapping = {
+        'departure_station': 'journey.departure_station_name',
+        'return_station': 'journey.return_station_name',
+        'distance': 'journey.distance',
+        'duration': 'journey.duration',
+        None: 'journey.id'
+    }
+
+    direction_mapping = {
+        'ascending': 'ASC',
+        'descending': 'DESC',
+        None: 'ASC'
+    }
+
+    def __init__(self, *, page, page_size, search_term, order_by, direction):
+        self.page = page
+        self.page_size = page_size
+        self.search_term = search_term
+        self.order_by = order_by
+        self.direction = direction
+
+    @property
+    def page(self):
+        return self._page
+
+    @page.setter
+    def page(self, page):
+        if not isinstance(page, int):
+            raise TypeError('page must be an int')
+        if not page > 0:
+            raise ValueError('page must be ≥ 1')
+        self._page = page
+
+    @property
+    def page_size(self):
+        return self._page_size
+
+    @page_size.setter
+    def page_size(self, page_size):
+        if not isinstance(page_size, int):
+            raise TypeError('page_size must be an int')
+        if page_size > 50 or page_size < 5:
+            raise ValueError('page_size must be within [5, 50]')
+        self._page_size = page_size
+
+    @property
+    def search_term(self):
+        return self._search_term
+
+    @search_term.setter
+    def search_term(self, search_term):
+        if search_term is None:
+            search_term = ''
+        if not isinstance(search_term, str):
+            raise TypeError('search_term must be None or a str')
+        if len(search_term) > 50:
+            raise ValueError(
+                'search_term can not be longer than 50'
+            )
+        self._search_term = search_term
+
+    @property
+    def order_by(self):
+        return self._order_by
+
+    @order_by.setter
+    def order_by(self, order_by):
+        keys = GetJourneysParams.order_by_mapping.keys()
+        if order_by not in keys:
+            raise ValueError(f'order_by must be one of {keys}')
+        self._order_by = order_by
+
+    @property
+    def direction(self):
+        return self._direction
+
+    @direction.setter
+    def direction(self, direction):
+        keys = GetJourneysParams.direction_mapping.keys()
+        if direction not in keys:
+            raise ValueError(f'direction must be one of {keys}')
+        self._direction = direction
+
+    def sql_offset(self):
+        return (self.page - 1) * self.page_size
+
+    def sql_search_term(self):
+        return f'%{self.search_term}%'
+
+    def sql_order_by(self):
+        return AsIs(
+            GetJourneysParams.order_by_mapping[self.order_by]
+        )
+
+    def sql_direction(self):
+        return AsIs(
+            GetJourneysParams.direction_mapping[self.direction]
+        )
+
+    def as_statement_params(self):
+        return {
+            'search_term': self.sql_search_term(),
+            'order_by_column': self.sql_order_by(),
+            'direction': self.sql_direction(),
+            'page_size': self.page_size,
+            'offset': self.sql_offset()
+        }
+
+
+class GetStationInfoParams:
+    def __init__(self, *, id, months):
+        self.id = id
+        self.months = months
+
+    @property
+    def id(self):
+        return self._id
+
+    @id.setter
+    def id(self, id):
+        if not isinstance(id, int):
+            raise TypeError('id expected to be an int')
+        self._id = id
+
+    @property
+    def months(self):
+        return self._months
+
+    @months.setter
+    def months(self, months):
+        if not isinstance(months, tuple):
+            raise TypeEror('months expected to be a tuple')
+        if len(months) > 3:
+            raise ValueError('months contains too many values (> 3)')
+        for month in months:
+            if not isinstance(month, int):
+                raise ValueError(
+                    'All values in months tuple should be of int type'
+                )
+            if month not in (5, 6, 7):
+                raise ValueError(
+                    'Value did not match tuple (5, 6, 7)'
+                )
+        self._months = months
+
+    def as_statement_params(self):
+        return {
+            'id': self.id,
+            'months': self.months
+        }
+
+@dataclass
+class GetStationsObject:
+    id: int
+    name: str
+    address: str
+
+@dataclass
+class GetJourneysObject:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destinations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
+
+class DB:
+    def __init__(self, database, user, password, host, port):
+        self.database = database
+        self.user = user
+        self.password = password
+        self.host = host
+        self.port = port
+
+    def _connection(self):
+        return psycopg2.connect(
+            database=self.database,
+            user=self.user,
+            password=self.password,
+            host=self.host,
+            port=self.port
+        )
+
+    def get_random_station_id(self):
+        sql = """
+SELECT fid
+FROM station
+ORDER BY RANDOM()
+LIMIT 1
+        """
+
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql)
+                value = cursor.fetchone()
+        return value[0]
+
+    def get_journeys(self, params):
+        if not isinstance(params, GetJourneysParams):
+            raise TypeError('Expected a GetJourneysParams')
+
+        sql = """
+SELECT
+        departure_station.fid as departure_station_id,
+        departure_station_name,
+        return_station.fid as return_station_id,
+        return_station_name,
+        distance * 0.001,
+        duration / 60
+FROM journey
+JOIN station AS departure_station
+ON departure_station_id = departure_station.id
+JOIN station AS return_station
+ON return_station_id = return_station.id
+WHERE departure_station_name ILIKE %(search_term)s ESCAPE ''
+      OR return_station_name ILIKE %(search_term)s ESCAPE ''
+ORDER BY %(order_by_column)s %(direction)s, journey.id ASC
+LIMIT %(page_size)s
+OFFSET %(offset)s
+        """
+
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, sql_params)
+                values = cursor.fetchall()
+        return list(map(lambda value: GetJourneysObject(*value), values))
+
+    def get_stations(self, params):
+        if not isinstance(params, GetStationsParams):
+            raise TypeError('Expected a GetStationsParams')
+        sql = """
+SELECT fid, finnish_name, finnish_address
+FROM station
+WHERE finnish_name ILIKE %(search_term)s ESCAPE ''
+    OR finnish_address ILIKE %(search_term)s ESCAPE ''
+ORDER BY finnish_name, finnish_address, fid ASC
+LIMIT %(page_size)s
+OFFSET %(offset)s
+        """
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(sql, sql_params)
+                values = cursor.fetchall()
+        return [GetStationsObject(*value) for value in values]
+
+    def _total_journeys_from_and_to_station(self, cursor, params):
+        sql = """
+WITH station AS (
+    SELECT id
+    FROM station
+    WHERE fid = %(id)s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as departures,
+    ( SELECT COUNT(*)
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as returns
+)
+SELECT returns, departures
+FROM station
+JOIN statistics
+ON station.id = statistics.id
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def _avg_distances_from_and_to_station(self, cursor, params):
+        sql = """
+WITH station AS (
+    SELECT id
+    FROM station
+    WHERE fid = %(id)s
+),
+statistics AS (
+    SELECT (
+        SELECT id FROM station
+    ), (
+        SELECT AVG(distance) as average_departure_distance
+        FROM journey
+        JOIN station
+        ON station.id = departure_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as avg_departure_distance,
+    (
+        SELECT AVG(distance) as average_return_distance
+        FROM journey
+        JOIN station
+        ON station.id = return_station_id
+        WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+    ) as avg_return_distance
+)
+SELECT avg_return_distance, avg_departure_distance
+FROM station
+JOIN statistics
+ON station.id = statistics.id;
+        """
+
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def _top_destination_stations(self, cursor, params):
+        sql = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %(id)s
+),
+top_destinations AS (
+     SELECT return_station_id, COUNT(*)
+     FROM journey
+     JOIN our_station
+     ON journey.departure_station_id = our_station.id
+     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+     GROUP BY return_station_id
+     ORDER BY count DESC
+     LIMIT 5
+)
+SELECT station.fid as id, station.finnish_name, count
+FROM top_destinations
+JOIN station
+ON station.id = top_destinations.return_station_id
+ORDER BY count DESC
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def _top_origin_stations(self, cursor, params):
+        sql = """
+WITH our_station AS (
+     SELECT id
+     FROM station
+     WHERE fid = %(id)s
+),
+top_destinations AS (
+     SELECT departure_station_id, COUNT(*)
+     FROM journey
+     JOIN our_station
+     ON journey.return_station_id = our_station.id
+     WHERE EXTRACT(MONTH FROM departure_time) IN %(months)s
+     GROUP BY departure_station_id
+     ORDER BY count DESC
+     LIMIT 5
+)
+SELECT station.fid as id, station.finnish_name, count
+FROM top_destinations
+JOIN station
+ON station.id = top_destinations.departure_station_id
+ORDER BY count DESC
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchall()
+
+    def _get_station(self, cursor, params):
+        sql = """
+SELECT finnish_name, finnish_address, x, y
+FROM station
+WHERE fid = %(id)s
+        """
+        cursor.execute(sql, params)
+        return cursor.fetchone()
+
+    def get_station_info(self, params):
+        if not isinstance(params, GetStationInfoParams):
+            raise TypeError('Expected a GetStationInfoParams')
+        sql_params = params.as_statement_params()
+        with self._connection() as connection:
+            with connection.cursor() as cursor:
+                station = self._get_station(cursor, sql_params)
+                total_journeys = self._total_journeys_from_and_to_station(cursor, sql_params)
+                average_distances = self._avg_distances_from_and_to_station(cursor, sql_params)
+                top_destinations = self._top_destination_stations(cursor, sql_params)
+                top_origins = self._top_origin_stations(cursor, sql_params)
+
+        destinations = [StationRelationInfo(*value) for value in top_destinations]
+        origins = [StationRelationInfo(*value) for value in top_origins]
+        return StationInfo(
+            name=station[0],
+            address=station[1],
+            x=station[2],
+            y=station[3],
+            journeys_started_here=total_journeys[1],
+            journeys_ended_here=total_journeys[0],
+            average_distance_started_here=average_distances[0],
+            average_distance_ended_here=average_distances[1],
+            top_destinations=destinations,
+            top_origins=origins
+        )
+#+end_src
+
+*** main.py
+
+#+header: :tangle hcb-backend/main.py
+#+begin_src python
+from flask import Flask, request
+from flask_restful import Api, Resource, fields, marshal_with
+from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
+import os
+
+app = Flask(__name__)
+api = Api(app)
+
+db_name = os.environ['PSQL_DB']
+db_user = os.environ['PSQL_USER']
+db_pass = os.environ['PSQL_PASS']
+db_host = os.environ['PSQL_HOST']
+db_port = os.environ['PSQL_PORT']
+
+journey = {
+    'departure_station_id': fields.Integer,
+    'departure_station_name': fields.String,
+    'return_station_id': fields.Integer,
+    'return_station_name': fields.String,
+    'distance': fields.Float,
+    'duration': fields.Integer
+}
+
+
+class JourneyList(Resource):
+    @marshal_with(journey)
+    def get(self):
+        page = int(request.args.get('page', '1'))
+        page_size = int(request.args.get('page_size', '10'))
+        search_term = request.args.get('search')
+        order_by = request.args.get('order_by')
+        direction = request.args.get('direction')
+
+        params = GetJourneysParams(
+            page=page,
+            page_size=page_size,
+            search_term=search_term,
+            order_by=order_by,
+            direction=direction
+        )
+
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+
+        result = db.get_journeys(params)
+        return result, 200
+
+station = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'address': fields.String
+}
+
+class StationList(Resource):
+    @marshal_with(station)
+    def get(self):
+        page = int(request.args.get('page', '1'))
+        page_size = int(request.args.get('page_size', '10'))
+        search_term = request.args.get('search')
+
+        params = GetStationsParams(
+            page=page,
+            page_size=page_size,
+            search_term=search_term
+        )
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        result = db.get_stations(params)
+        return result, 200
+
+station_relation_info = {
+    'id': fields.Integer,
+    'name': fields.String,
+    'journeys': fields.Integer,
+}
+
+station_info = {
+    'name': fields.String,
+    'address': fields.String,
+    'x': fields.Float,
+    'y': fields.Float,
+    'journeys_started_here': fields.Integer,
+    'journeys_ended_here': fields.Integer,
+    'average_distance_started_here': fields.Integer,
+    'average_distance_ended_here': fields.Integer,
+    'top_destinations': \
+    fields.List(fields.Nested(station_relation_info)),
+    'top_origins': \
+    fields.List(fields.Nested(station_relation_info))
+}
+
+class StationInfo(Resource):
+    @marshal_with(station_info)
+    def get(self, id):
+        id = int(id)
+        months = request.args.getlist('month')
+        if months == []:
+            months = ('5', '6', '7')
+        months = tuple(map(int, months))
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        params = GetStationInfoParams(id=id, months=months)
+        result = db.get_station_info(params)
+        return result
+
+class RandomStation(Resource):
+    def get(self):
+        db = DB(db_name, db_user, db_pass, db_host, db_port)
+        return db.get_random_station_id()
+
+api.add_resource(JourneyList, '/journeys')
+api.add_resource(StationList, '/stations')
+api.add_resource(StationInfo, '/stations/<int:id>')
+api.add_resource(RandomStation, '/random-station')
+
+if __name__ == "__main__":
+    host = os.environ['HCBB_HOST']
+    port = os.environ['HCBB_PORT']
+    app.run(host=host, port=port, debug=True)
+#+end_src
+
+** The frontend
+
+The frontend offers the following views:
++ A home page
++ A journey list
++ A station list
++ A more specific listing of a station.
+
+It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
+
+*** requirements.txt
+
+#+header: :tangle hcb-frontend/requirements.txt
+#+begin_src python
+Flask
+psycopg2-binary
+requests
+#+end_src
+
+*** The application entrypoint (main.py)
+
+#+header: :tangle hcb-frontend/main.py
+#+begin_src python
+from flask import Flask, render_template, request, redirect, url_for
+from dataclasses import dataclass
+import requests
+import os
+
+app = Flask(__name__)
+
+backend_url = os.environ['HCBF_BACKEND_URL']
+host = os.environ['HCBF_HOST']
+port = os.environ['HCBF_PORT']
+
+@dataclass
+class Journey:
+    departure_station_id: int
+    departure_station_name: str
+    return_station_id: int
+    return_station_name: str
+    distance: float
+    duration: int
+
+@app.route('/journeys')
+def journeys():
+    page = int(request.args.get('page', '1'))
+    search_term = request.args.get('search', '')
+    order_by = request.args.get('order_by')
+    direction = request.args.get('direction')
+
+    url = f'{backend_url}/journeys?page={page}'
+
+    if search_term:
+        url = f'{url}&search={search_term}'
+    if order_by:
+        url = f'{url}&order_by={order_by}'
+    if direction:
+        url = f'{url}&direction={direction}'
+
+    resp = requests.get(url)
+
+    resp.raise_for_status()
+
+    journeys = [Journey(**journey) for journey in resp.json()]
+
+    return render_template(
+        'journeys.html.j2',
+        journeys=journeys,
+        previous_page=max(page - 1, 1),
+        next_page=page + 1,
+        page=page,
+        search_term=search_term,
+        order_by=order_by,
+        direction=direction
+    )
+
+@dataclass
+class Station:
+    id: int
+    name: str
+    address: str
+
+@app.route('/stations')
+def stations():
+    page = max(1, int(request.args.get('page', '1')))
+    search_term = request.args.get('search', '')
+
+    url = f'{backend_url}/stations?page={page}'
+
+    if search_term:
+        url = f'{url}&search={search_term}'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    stations = [Station(**station) for station in resp.json()]
+
+    previous_page = None if page == 1 else page - 1
+    next_page = page + 1
+    return render_template(
+        'stations.html.j2',
+        stations=stations,
+        previous_page=previous_page,
+        page=page,
+        next_page=next_page,
+        search_term=search_term
+    )
+
+
+@dataclass
+class StationRelationInfo:
+    id: int
+    name: str
+    journeys: int
+
+@dataclass
+class StationInfo:
+    name: str
+    address: str
+    x: float
+    y: float
+    journeys_started_here: int
+    journeys_ended_here: int
+    average_distance_started_here: int
+    average_distance_ended_here: int
+    top_destinations: list[StationRelationInfo]
+    top_origins: list[StationRelationInfo]
+
+
+@app.route('/station/<int:station_id>')
+def station(station_id):
+    months = request.args.getlist('month')
+    if months == []:
+        months = ('5', '6', '7')
+
+    months = tuple(map(int, months))
+    url = f'{backend_url}/stations/{station_id}?'
+
+    for month in months:
+        url = f'{url}month={month}&'
+
+    response = requests.get(url)
+    response.raise_for_status()
+    data = response.json()
+    station_info = StationInfo(
+        name=data['name'],
+        address=data['address'],
+        x=data['x'],
+        y=data['y'],
+        journeys_started_here=data['journeys_started_here'],
+        journeys_ended_here=data['journeys_ended_here'],
+        average_distance_started_here=\
+        data['average_distance_started_here'],
+        average_distance_ended_here=\
+        data['average_distance_ended_here'],
+        top_destinations=[StationRelationInfo(**value) for value in data['top_destinations']],
+        top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
+    )
+
+    return render_template(
+        'station.html.j2',
+        station=station_info,
+        months=months
+    )
+
+@app.route('/random-station')
+def random_station():
+    url = f'{backend_url}/random-station'
+    resp = requests.get(url)
+    resp.raise_for_status()
+    station_id = resp.json()
+    return redirect(
+        url_for('station', station_id=station_id)
+    )
+
+@app.route('/')
+def home():
+    return render_template('home.html.j2')
+
+if __name__ == "__main__":
+    host = host
+    port = port
+    app.run(host=host, port=port, debug=True)
+#+end_src
+
+*** HTML templates
+
+**** base.html.j2
+
+This template is not rendered directly, instead other templates inherit and implement its blocks as needed.
+
+#+header: :tangle hcb-frontend/templates/base.html.j2
+#+begin_src jinja2
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link type="text/css" rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% block head_plus %}
+    {% endblock head_plus %}
+    <title>
+      {% block title %}
+        Helsinki city bikes
+      {% endblock title %}
+    </title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+  </head>
+  <body>
+    {% block navbar %}
+      <nav class="navbar navbar-expand-lg bg-light">
+        <div class="container-fluid">
+          <a class="navbar-brand" href="{{ url_for('home') }}">Helsinki City Bikes</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarSupportedContent" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+          <div class="collapse navbar-collapse" id="navbarSupportedContent">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
+              </li>
+              <li class="nav-item">
+                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </nav>
+    {% endblock navbar %}
+    {% block content %}
+      <p>Implement the content block</p>
+    {% endblock content %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-kenU1KFdBIe4zVF0s0G1M5b4hcpxyD9F7jL+jjXkk+Q2h455rYXK/7HAuoJl+0I4" crossorigin="anonymous"></script>
+
+    {% block body_plus %}
+    {% endblock body_plus %}
+  </body>
+</html>
+#+end_src
+
+**** home.html.j2
+
+Served when visiting =/=.
+
+#+header: :tangle hcb-frontend/templates/home.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <p class="lead mt-5">
+          Pick a table category from the top nav bar, or...
+        </p>
+      </div>
+    </div>
+    <div class="row align-items-center">
+      <div class="col d-flex justify-content-center">
+        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
+      </div>
+    </div>
+  </div>
+{% endblock %}
+#+end_src
+
+**** journeys.html.j2
+
+Served when visiting =/journeys=.
+
+#+header: :tangle hcb-frontend/templates/journeys.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block head_plus %}
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+{% endblock %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Journeys</h1>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <form>
+          <div class="input-group" id="form">
+            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>
+                  {% if order_by == 'departure_station' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='descending') }}">Departure station</a>
+                      <i class="bi-sort-alpha-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
+                      <i class="bi-sort-alpha-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'return_station' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='descending') }}">Return station</a>
+                      <i class="bi-sort-alpha-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
+                      <i class="bi-sort-alpha-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'distance' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='descending') }}">Covered distance (km)</a>
+                      <i class="bi-sort-numeric-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
+                      <i class="bi-sort-numeric-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
+                  {% endif %}
+                </th>
+                <th>
+                  {% if order_by == 'duration' %}
+                    {% if direction == 'ascending' %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='descending') }}">Duration (m)</a>
+                      <i class="bi-sort-numeric-down"></i>
+                    {% else %}
+                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
+                      <i class="bi-sort-numeric-up"></i>
+                    {% endif %}
+                  {% else %}
+                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
+                  {% endif %}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for journey in journeys %}
+                <tr>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.departure_station_id) }}">
+                      {{ journey.departure_station_name }}
+                    </a>
+                  </td>
+                  <td>
+                    <a href="{{ url_for('station', station_id=journey.return_station_id) }}">
+                      {{ journey.return_station_name }}
+                    </a>
+                  </td>
+                  <td>{{ journey.distance | round(1) }}</td>
+                  <td>{{ journey.duration  }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('journeys', page=previous_page, search=search_term, order_by=order_by, direction=direction) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('journeys', page=next_page, search=search_term, order_by=order_by, direction=direction) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+#+end_src
+
+**** stations.html.j2
+
+Served when visiting =/stations=.
+
+#+header: :tangle hcb-frontend/templates/stations.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <h1>Stations</h1>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <form>
+          <div class="input-group">
+            <input type="" class="form-control" placeholder="Search term" name="search" value="{{ search_term }}">
+            <button type="submit" class="btn btn-primary">Search</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col">
+        <div class="table-responsive">
+          <table class="table table-striped table-hover">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for station in stations %}
+                <tr>
+                  <td>
+                    <a href="{{ url_for('station', station_id=station.id) }}">
+                      {{ station.name }}
+                    </a>
+                  </td>
+                  <td>{{ station.address }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="col d-flex justify-content-center">
+        <ul class="pagination">
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="{{ url_for('stations', page=previous_page, search=search_term) }}">
+              Previous
+            </a>
+          </li>
+          <li class="page-item">
+            <a
+              class="page-link"
+              href="#">
+              {{ page }}
+            </a>
+          </li>
+          <li class="page-item">
+            <a class="page-link"
+               href="{{ url_for('stations', page=next_page, search=search_term) }}">
+               Next
+            </a>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+#+end_src
+
+Served when visiting =station/<id>=.
+
+#+header: :tangle hcb-frontend/templates/station.html.j2
+#+begin_src jinja2
+{% extends "base.html.j2" %}
+
+{% block content %}
+  <div class="container">
+    <div class="row">
+      <div class="col-12 col-md-6">
+        <div class="row">
+          <div class="col">
+            <h3>Station</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Address</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.name }}</td>
+                  <td>{{ station.address }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <div class="row">
+              <div class="col">
+                <h3>Details</h3>
+              </div>
+            </div>
+            <form>
+              <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
+                     {% if 5 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="may">May</label>
+
+              <input type="checkbox" class="btn-check" id="june" autocomplete="off" name="month" value="6"
+                     {% if 6 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="june">June</label>
+
+              <input type="checkbox" class="btn-check" id="july" autocomplete="off" name="month" value="7"
+                     {% if 7 in months %}
+                       checked
+                     {% endif %}>
+              <label class="btn btn-outline-primary" for="july">July</label>
+
+              <button type="submit" class="btn btn-primary">Recompute</button>
+            </form>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Journeys started here</th>
+                  <th>Journeys ended here</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.journeys_started_here }}</td>
+                  <td>{{ station.journeys_ended_here }}</td>
+                </tr>
+              </tbody>
+              <thead>
+                <tr>
+                  <th>Average journey from here (m)</th>
+                  <th>Average journey to here (m)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>{{ station.average_distance_started_here }}</td>
+                  <td>{{ station.average_distance_ended_here }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top destinations</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in station.top_destinations %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="row">
+          <div class="col">
+            <h3>Top origins</h3>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Station</th>
+                  <th>Journeys</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for journey in station.top_origins %}
+                  <tr>
+                    <td><a href="{{ url_for('station', station_id=journey.id) }}">{{ journey.name }}</a></td>
+                    <td>{{ journey.journeys }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6">
+        <div id="osm-map"></div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}
+
+{% block body_plus %}
+  <script>
+    x = {{ station.x }}
+    y = {{ station.y }}
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin="" />
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+  <script src="{{ url_for('static', filename="osm.js") }}"></script>
+{% endblock body_plus %}
+#+end_src
+
+*** osm.js
+
+A small bit of Javascript to draw the little marker on the openstreetmap map.
+
+#+header: :tangle hcb-frontend/static/osm.js
+#+begin_src js
+var element = document.getElementById('osm-map');
+
+element.style = 'height:600px;'
+
+var map = L.map(element);
+
+L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+}).addTo(map);
+
+var target = L.latLng(y, x);
+
+map.setView(target, 13);
+
+L.marker(target)
+  .addTo(map);
+#+end_src
+
+*** style.css
+
+Custom css, which there obviously is not a lot of.
+
+#+header: :tangle hcb-frontend/static/style.css
+#+begin_src css
+
+#+end_src
