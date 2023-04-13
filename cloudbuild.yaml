@@ -52,5 +52,5 @@ steps:
 
 artifacts:
   objects:
-    location: 'gs://hcb-helsinki-city-bikes/$BRANCH_NAME/$SHORT_SHA.$BUILD_ID/'
+    location: 'gs://hcb-helsinki-city-bikes/$BRANCH_NAME/'
     paths: ['sources.tar']
