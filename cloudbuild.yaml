@@ -9,7 +9,14 @@ steps:
         emacs -Q --batch --script tangle.el
         tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
     id: tangle-sources
+  - name: gcr.io/cloud-builders/gsutil
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
+    id: make-source-tarball
   - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes']
-    id: copy-sources
-    waitFor: ['tangle-sources']
+    args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes/$BRANCH_NAME']
+    id: tarball-to-cloud-storage
+    waitFor: ['make-source-tarball']

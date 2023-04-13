@@ -76,7 +76,7 @@ Note that I used [[https://podman.io][Podman]] instead of Docker as the containe
 
 ** Download and extract the source tarballs
 
-The application sources are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+The application sources are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar]].  Download and extract them with the below command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
 
 #+header: :results scalar
 #+begin_src sh
