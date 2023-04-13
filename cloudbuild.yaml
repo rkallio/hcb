@@ -1,4 +1,7 @@
 steps:
+  #########################################
+  # Extract source files from README.org  #
+  #########################################
   - name: debian
     entrypoint: bash
     args:
@@ -9,7 +12,45 @@ steps:
         emacs -Q --batch --script tangle.el
         tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
     id: tangle-sources
-  - name: 'gcr.io/cloud-builders/gsutil'
-    args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes']
-    id: copy-sources
+
+  ###################################
+  # Create a tarball of the sources #
+  ###################################
+  - name: gcr.io/cloud-builders/gsutil
+    entrypoint: bash
+    args:
+      - -c
+      - |
+        tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
+    id: make-source-tarball
     waitFor: ['tangle-sources']
+
+  #######################
+  # Build docker images #
+  #######################
+#   - name: 'gcr.io/cloud-builders/docker'
+#     args: ['build', '-t', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-frontend', 'hcb-frontend']
+#     id: build-hcb-frontend
+#     waitFor: ['tangle-sources']
+
+#   - name: 'gcr.io/cloud-builders/docker'
+#     args: ['build', '-t', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-backend', 'hcb-backend']
+#     id: build-hcb-backend
+#     waitFor: ['tangle-sources']
+
+#   - name: 'gcr.io/cloud-builders/docker'
+#     args: ['build', '-t', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-data-import', 'hcb-data-import']
+#     id: build-hcb-data-import
+#     waitFor: ['tangle-sources']
+
+#   - name: 'gcr.io/cloud-builders/docker'
+#     args: ['build', '-t', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-setup-database', 'hcb-setup-database']
+#     id: build-hcb-setup-database
+#     waitFor: ['tangle-sources']
+
+# images: ['europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-frontend', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-backend', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-data-import', 'europe-north1-docker.pkg.dev/helsinki-city-bikes-383419/docker/hcb-setup-database']
+
+artifacts:
+  objects:
+    location: 'gs://hcb-helsinki-city-bikes/$BRANCH_NAME/'
+    paths: ['sources.tar']
