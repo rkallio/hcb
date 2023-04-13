@@ -7,7 +7,7 @@ steps:
         apt update  -y
         apt install -y emacs-nox
         emacs -Q --batch --script tangle.el
-        tar cvf sources.tar hcbb hcbf hcbi hcbdb
+        tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
     id: tangle-sources
   - name: 'gcr.io/cloud-builders/gsutil'
     args: ['-m', 'cp', 'sources.tar', 'gs://hcb-helsinki-city-bikes']
