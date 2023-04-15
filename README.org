@@ -3,6 +3,7 @@
 
 
 * Table of contents                                                     :TOC:
+- [[#visiting-an-instance][Visiting an instance]]
 - [[#running-locally-with-docker][Running locally with Docker]]
   - [[#download-and-extract-the-source-tarballs][Download and extract the source tarballs]]
   - [[#define-a-docker-network][Define a Docker network]]
@@ -72,6 +73,10 @@
     - [[#frontend-configuration][Frontend configuration]]
     - [[#backend-configuration][Backend configuration]]
     - [[#database-export][Database export]]
+
+* Visiting an instance
+
+An instance of the app is running at [[https://hcb.rkll.net]].
 
 * Running locally with Docker
 
