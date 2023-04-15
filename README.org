@@ -32,6 +32,7 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#fix-the-latin-1-encoding-issue-in-data-import][Fix the Latin-1 encoding issue in data import.]]
   - [[#improve-documentation][Improve documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
   - [[#collect-requirements][Collect requirements]]
@@ -491,6 +492,10 @@ Not implemented.
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+** Fix the Latin-1 encoding issue in data import.
+:LOGBOOK:
+CLOCK: [2023-04-15 Sat 15:48]--[2023-04-15 Sat 16:46] =>  0:58
+:END:
 
 ** Improve documentation
 :LOGBOOK:
@@ -788,6 +793,8 @@ def download_network_file(networkfile):
         with open(localpath, 'w') as localfile:
             response = requests.get(networkfile)
             response.raise_for_status()
+            # Server doesn't set charset=utf-8 because it is dumb
+            response.encoding = 'utf-8'
             localfile.write(response.text)
 
     return localpath
