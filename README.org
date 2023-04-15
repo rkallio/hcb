@@ -32,6 +32,7 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#rename-path-stationid-to-stationsid-in-frontend][Rename path =/station/<id>= to =/stations/<id>= in frontend.]]
   - [[#fix-the-latin-1-encoding-issue-in-data-import][Fix the Latin-1 encoding issue in data import.]]
   - [[#improve-documentation][Improve documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
@@ -492,6 +493,8 @@ Not implemented.
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+** Rename path =/station/<id>= to =/stations/<id>= in frontend.
+
 ** Fix the Latin-1 encoding issue in data import.
 :LOGBOOK:
 CLOCK: [2023-04-15 Sat 15:48]--[2023-04-15 Sat 16:46] =>  0:58
@@ -2302,7 +2305,7 @@ class StationInfo:
     top_origins: list[StationRelationInfo]
 
 
-@app.route('/station/<int:station_id>')
+@app.route('/stations/<int:station_id>')
 def station(station_id):
     months = request.args.getlist('month')
     if months == []:
