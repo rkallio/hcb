@@ -33,6 +33,8 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#write-tests-for-backend][Write tests for backend]]
+  - [[#speed-up-station-statistics-page-load][Speed up station statistics page load]]
   - [[#rename-path-stationid-to-stationsid-in-frontend][Rename path =/station/<id>= to =/stations/<id>= in frontend.]]
   - [[#fix-the-latin-1-encoding-issue-in-data-import][Fix the Latin-1 encoding issue in data import.]]
   - [[#improve-documentation][Improve documentation]]
@@ -473,9 +475,7 @@ Not implemented.
 + [[https://dev.solita.fi/2022/11/01/testing-primer-dev-academy.html][Testing Primer]] – tips on how to test your application
 
 ** Datasets
-
 *** Journey dataset
-
 
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv]]
 + [[https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv]]
@@ -498,6 +498,12 @@ Not implemented.
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+** TODO Write tests for backend
+
+** TODO Speed up station statistics page load
+
+On App Engine requests to =/stations/<id>= take ~4.5 seconds to complete, because the SQL queries are heavy and the VM running Postgres has no SSD/is low powered.  Figure out a better DB layout or precompute these values or.
+
 ** Rename path =/station/<id>= to =/stations/<id>= in frontend.
 
 ** Fix the Latin-1 encoding issue in data import.
