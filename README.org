@@ -59,10 +59,12 @@
     - [[#stations-data-import][Stations data import]]
     - [[#journeys-data-import][Journeys data import]]
   - [[#the-backend][The backend]]
+    - [[#tests][Tests]]
     - [[#requirementstxt-1][requirements.txt]]
     - [[#dbpy][db.py]]
     - [[#mainpy-1][main.py]]
   - [[#the-frontend][The frontend]]
+    - [[#tests-1][Tests]]
     - [[#requirementstxt-2][requirements.txt]]
     - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
     - [[#html-templates][HTML templates]]
@@ -159,6 +161,8 @@ PSQL_PORT=5432
 ** Populate the database
 
 This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get a =Killed= while processing, increase Docker's allocated memory to 4096MB.
+
+There is also a precomputed =pg_dump= file, which you can extract and apply with =pg_restore= located here: [[https://storage.googleapis.com/hcb-helsinki-city-bikes/pg2.dmp.gz]]
 
 #+begin_src sh
 cd hcb-data-import
@@ -499,6 +503,9 @@ Not implemented.
 
 * Minutes & Journal
 ** TODO Write tests for backend
+:LOGBOOK:
+CLOCK: [2023-04-15 Sat 17:00]--[2023-04-15 Sat 17:35] =>  0:35
+:END:
 
 ** TODO Speed up station statistics page load
 
@@ -676,7 +683,7 @@ A python script provided below prepares the database for use.  Execution instruc
 **** requirements.txt
 
 #+header: :tangle hcb-setup-database/requirements.txt
-#+begin_src python
+#+begin_src text
 psycopg2-binary
 #+end_src
 
@@ -1567,10 +1574,101 @@ A client may interface with the backend via a REST interface.  REST requests are
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
+*** Tests
+
+**** Package header
+
+#+header: :tangle hcb-backend/tests/__init__.py
+#+begin_src python :tangle hcb_backend/tests/__init__.py
+"""Tests for hcb-backend."""
+#+end_src
+
+**** test_db.py
+
+#+header: :tangle hcb-backend/tests/test_db.py
+#+begin_src python
+from unittest import TestCase
+from db import GetStationsParams
+
+class TestGetStationsParams(TestCase):
+
+    def test_page_parameter_must_be_an_int(self):
+        with self.assertRaises(TypeError):
+            GetStationsParams(page=None, page_size=5, search_term=None)
+
+    def test_page_parameter_must_be_gt_0(self):
+        with self.assertRaises(ValueError):
+            GetStationsParams(page=0, page_size=5, search_term=None)
+
+    def test_page_size_must_be_an_int(self):
+        with self.assertRaises(TypeError):
+            GetStationsParams(page=1, page_size=None, search_term=None)
+
+    def test_page_size_must_be_ge_5(self):
+        with self.assertRaises(ValueError):
+            GetStationsParams(page=1, page_size=4, search_term=None)
+
+    def test_page_size_must_be_le_50(self):
+        with self.assertRaises(ValueError):
+            GetStationsParams(page=1, page_size=51, search_term=None)
+
+    def test_search_term_of_None_is_eq_to_empty_string(self):
+        params = GetStationsParams(page=1, page_size=5, search_term=None)
+        self.assertEqual(params.search_term, '')
+
+    def test_search_term_must_be_None_or_str(self):
+        with self.assertRaises(TypeError):
+            GetStationsParams(page=1, page_size=5, search_term=True)
+
+    def test_search_term_must_be_shorter_than_50(self):
+        with self.assertRaises(ValueError):
+            GetStationsParams(
+                page=1,
+                page_size=5,
+                search_term=' ' * 51
+            )
+
+    def test_sql_offset_is_0_on_first_page(self):
+        params = GetStationsParams(
+            page=1,
+            page_size=5,
+            search_term=None
+        )
+
+        self.assertEqual(
+            params.sql_offset(),
+            0
+        )
+
+    def test_sql_offset_grows_by_page_size(self):
+        for page in ((2, 5), (3, 10)):
+            params = GetStationsParams(
+                page=page[0],
+                page_size=5,
+                search_term=None
+            )
+            self.assertEqual(
+                params.sql_offset(),
+                page[1]
+            )
+
+    def test_search_term_wrapped_in_percent_signs(self):
+        params = GetStationsParams(
+            page=1,
+            page_size=5,
+            search_term='kannelmäki'
+        )
+
+        self.assertEqual(
+            params.sql_search_term(),
+            '%kannelmäki%'
+        )
+#+end_src
+
 *** requirements.txt
 
 #+header: :tangle hcb-backend/requirements.txt
-#+begin_src sh
+#+begin_src text
 Flask
 flask_restful
 psycopg2-binary
@@ -2201,6 +2299,168 @@ The frontend offers the following views:
 
 It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
 
+*** Tests
+
+[[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running somewhere that is accessible.
+
+To run the tests:
+
+1. Move to directory =hcb-frontend=.
+2. Create a virtual environment
+3. Install dependencies declared in =robot-requirements.txt=.
+4. Install [[https://robotframework-browser.org][Robot Framework Browser's]] browser bundle
+5. Execute the =robot= script with argument =tests=.
+
+#+begin_src sh
+cd hcb-frontend
+python -m venv env
+./env/bin/pip install --upgrade pip
+./env/bin/pip install --requirement robot-requirements.txt
+./env/bin/rfbrowser init
+./env/bin/robot tests
+#+end_src
+
+**** resource.robot
+
+Here's a resource file for the tests.  You may want to point the =SERVER= variable somewhere else, like to [[https://hcb.rkll.net]], if you have not set up the app on your local machine.
+
+#+header: :tangle hcb-frontend/tests/resource.robot
+#+begin_src robot
+,*** Settings ***
+Library   Browser
+
+,*** Variables ***
+${SERVER}        http://localhost:5434
+
+,*** Keywords ***
+Title contains Helsinki city bikes
+    Get Title  *=  Helsinki city bikes
+
+Navbar exists
+    Get Element  nav
+    Get Text  .navbar-brand  *=  Helsinki City Bikes
+    Get Attribute  .navbar-brand  href  ==  /
+    Get Text  id=navbar-journeys-link  ==  Journeys
+    Get Attribute  id=navbar-journeys-link  href  ==  /journeys
+    Get Text  id=navbar-stations-link  ==  Stations
+    Get Attribute  id=navbar-stations-link  href  ==  /stations
+#+end_src
+
+**** robot-requirements.txt
+
+#+header: :tangle hcb-frontend/robot-requirements.txt
+#+begin_src text
+robotframework-browser
+#+end_src
+
+**** homepage.robot
+
+These are tests for the homepage.
+
+#+header: :tangle hcb-frontend/tests/homepage.robot
+#+begin_src robot
+,*** Settings ***
+Documentation  Tests for the app's homepage.
+Test Setup     New Page  ${HOMEPAGE_URL}
+Resource       resource.robot
+
+,*** Variables ***
+${HOMEPAGE_URL}  ${SERVER}/
+
+,*** Test Cases ***
+Title contains Home
+    Get Title  *=  Home
+
+Title contains Helsinki city bikes
+    Title contains Helsinki city bikes
+
+Contains random station button
+    Get Text  id=random-station-button  *=  random station
+
+Random button links to /random-station
+    Get Attribute  id=random-station-button  href  ==  /random-station
+
+Contains navbar
+    Navbar exists
+
+#+end_src
+
+**** journeys.robot
+
+These test the path =/journeys=.
+
+#+header: :tangle hcb-frontend/tests/journeys.robot
+#+begin_src robot
+,*** Settings ***
+Documentation  Tests for the app's journeys page
+Test Setup     New Page  ${JOURNEYS_URL}
+Resource       resource.robot
+
+,*** Variables ***
+${JOURNEYS_URL}  ${SERVER}/journeys
+
+,*** Test Cases ***
+Title contains Journeys
+    Get Title  *=  Journeys
+
+Title contains Helsinki city bikes
+    Title contains Helsinki city bikes
+
+Contains navbar
+    Navbar exists
+
+Contains search form
+    Get Element  form
+    Get Element  form input
+    Get Element  form button
+
+Search contains placeholder text
+    Get Attribute  form input  placeholder  ==  Search term
+
+Searching adds query parameter search to url
+    Type Text  form input  hello
+    Click  form button
+    Get Url  *=  search=hello
+#+end_src
+
+**** stations.robot
+
+These test the =/stations= path.
+
+#+header: :tangle hcb-frontned/tests/stations.robot
+#+begin_src robot
+,*** Settings ***
+Documentation  Tests for the app's stations page
+Test Setup     New Page  ${STATIONS_URL}
+Resource       resource.robot
+
+,*** Variables ***
+${STATIONS_URL}  ${SERVER}/stations
+
+,*** Test Cases ***
+Title cointains Stations
+   Get Title  *=  Stations
+
+Title contains Helsinki city bikes
+    Title contains Helsinki city bikes
+
+Contains navbar
+    Navbar exists
+
+Contains search form
+    Get Element  form
+    Get Element  form input
+    Get Element  form button
+
+Search contains placeholder text
+    Get Attribute  form input  placeholder  ==  Search term
+
+Searching adds query parameter search to url
+    Type Text  form input  hello
+    Click  form button
+    Get Url  *=  search=hello
+#+end_src
+
 *** requirements.txt
 
 #+header: :tangle hcb-frontend/requirements.txt
@@ -2389,9 +2649,7 @@ This template is not rendered directly, instead other templates inherit and impl
     {% block head_plus %}
     {% endblock head_plus %}
     <title>
-      {% block title %}
-        Helsinki city bikes
-      {% endblock title %}
+      {% block title %}block title{% endblock title %} -- Helsinki city bikes
     </title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
   </head>
@@ -2406,10 +2664,10 @@ This template is not rendered directly, instead other templates inherit and impl
           <div class="collapse navbar-collapse" id="navbarSupportedContent">
             <ul class="navbar-nav me-auto mb-2 mb-lg-0">
               <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('journeys') }}">Journeys</a>
+                <a class="nav-link" id="navbar-journeys-link" href="{{ url_for('journeys') }}">Journeys</a>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{{ url_for('stations') }}">Stations</a>
+                <a class="nav-link" id="navbar-stations-link" href="{{ url_for('stations') }}">Stations</a>
               </li>
             </ul>
           </div>
@@ -2435,6 +2693,10 @@ Served when visiting =/=.
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
+{% block title %}
+  Home
+{% endblock %}
+
 {% block content %}
   <div class="container">
     <div class="row align-items-center">
@@ -2446,7 +2708,7 @@ Served when visiting =/=.
     </div>
     <div class="row align-items-center">
       <div class="col d-flex justify-content-center">
-        <a class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
+        <a id="random-station-button" class="btn btn-primary" href="{{ url_for('random_station') }}" role="button">Pick a random station</a>
       </div>
     </div>
   </div>
@@ -2463,6 +2725,10 @@ Served when visiting =/journeys=.
 
 {% block head_plus %}
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.4/font/bootstrap-icons.css">
+{% endblock %}
+
+{% block title %}
+  Journeys
 {% endblock %}
 
 {% block content %}
@@ -2602,6 +2868,10 @@ Served when visiting =/stations=.
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
+{% block title %}
+  Stations
+{% endblock %}
+
 {% block content %}
   <div class="container">
     <div class="row">
@@ -2681,37 +2951,30 @@ Served when visiting =station/<id>=.
 #+begin_src jinja2
 {% extends "base.html.j2" %}
 
+{% block title %}
+  {{ station.name }}
+{% endblock %}
+
 {% block content %}
   <div class="container">
     <div class="row">
       <div class="col-12 col-md-6">
-        <div class="row">
+        <div class="row py-3">
           <div class="col">
-            <h3>Station</h3>
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Address</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>{{ station.name }}</td>
-                  <td>{{ station.address }}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+            <h1>{{ station.name }}</h1>
+            <h2>{{ station.address }}</h2>
+            </div>
+        </div>
+        <div class="row">
         </div>
         <div class="row">
           <div class="col">
-            <div class="row">
+            <div class="row py-1">
               <div class="col">
-                <h3>Details</h3>
-              </div>
-            </div>
-            <form>
+                <h3>Details for</h3>
+                </div>
+              <div class="col">
+                <form>
               <input type="checkbox" class="btn-check" id="may" autocomplete="off" name="month" value="5"
                      {% if 5 in months %}
                        checked
@@ -2732,6 +2995,9 @@ Served when visiting =station/<id>=.
 
               <button type="submit" class="btn btn-primary">Recompute</button>
             </form>
+              </div>
+            </div>
+
             <table class="table">
               <thead>
                 <tr>
@@ -2924,6 +3190,7 @@ if __name__ == "__main__":
 #+header: :tangle hcb-frontend/.gcloudignore
 #+begin_src text
 env
+tests
 #+end_src
 
 **** app.yaml
@@ -2943,6 +3210,7 @@ env_variables:
 #+header: :tangle hcb-backend/.gcloudignore
 #+begin_src text
 env
+tests
 #+end_src
 
 **** app.yaml
