@@ -2731,6 +2731,38 @@ Served when visiting =/journeys=.
   Journeys
 {% endblock %}
 
+{% macro _header_link(column_name, column_readable_name, direction, sort_icon, search_term) %}
+  <a href="{{ url_for('journeys', page=1, search=search_term, order_by=column_name, direction=direction) }}">{{ column_readable_name }}</a>
+  <i class="{{ sort_icon }}"></i>
+{% endmacro %}
+
+{% macro _table_header_element(column_name, column_readable_name, order_by, data_type, direction, search_term) %}
+  {% if data_type == 'numeric' %}
+    {% if direction == 'ascending' %}
+      {% set icon = 'bi-sort-numeric-down' %}
+    {% else %}
+      {% set icon = 'bi-sort-numeric-up' %}
+    {% endif %}
+  {% elif data_type == 'alpha' %}
+    {% if direction == 'ascending' %}
+      {% set icon = 'bi-sort-alpha-down' %}
+    {% else %}
+      {% set icon = 'bi-sort-alpha-up' %}
+    {% endif %}
+  {% endif %}
+  {% if column_name != order_by %}
+    {% set icon = None %}
+  {% endif %}
+
+  <th>
+    {% if order_by == column_name and direction == 'ascending' %}
+      {{ _header_link(column_name, column_readable_name, 'descending', icon, search_term) }}
+    {% else %}
+      {{ _header_link(column_name, column_readable_name, 'ascending', icon, search_term) }}
+    {% endif %}
+  </th>
+{% endmacro %}
+
 {% block content %}
   <div class="container">
     <div class="row">
@@ -2753,59 +2785,11 @@ Served when visiting =/journeys=.
         <div class="table-responsive">
           <table class="table table-striped table-hover">
             <thead>
-              <tr>
-                <th>
-                  {% if order_by == 'departure_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='descending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='departure_station', direction='ascending') }}">Departure station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'return_station' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='descending') }}">Return station</a>
-                      <i class="bi-sort-alpha-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                      <i class="bi-sort-alpha-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='return_station', direction='ascending') }}">Return station</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'distance' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='descending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='distance', direction='ascending') }}">Covered distance (km)</a>
-                  {% endif %}
-                </th>
-                <th>
-                  {% if order_by == 'duration' %}
-                    {% if direction == 'ascending' %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='descending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-down"></i>
-                    {% else %}
-                      <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                      <i class="bi-sort-numeric-up"></i>
-                    {% endif %}
-                  {% else %}
-                    <a href="{{ url_for('journeys', page=1, search=search_term, order_by='duration', direction='ascending') }}">Duration (m)</a>
-                  {% endif %}
-                </th>
+             <tr>
+               {{ _table_header_element('departure_station', 'Departure Station', order_by, 'alpha', direction, search_term) }}
+               {{ _table_header_element('return_station', 'Return Station', order_by, 'alpha', direction, search_term) }}
+               {{ _table_header_element('distance', 'Covered distance (km)', order_by, 'numeric', direction, search_term) }}
+               {{ _table_header_element('duration', 'Duration (m)', order_by, 'numeric', direction, search_term) }}
               </tr>
             </thead>
             <tbody>
