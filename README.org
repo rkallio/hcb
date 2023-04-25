@@ -2301,7 +2301,7 @@ It is implemented in [[https://www.python.org][Python]] using the [[https://flas
 
 *** Tests
 
-[[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running somewhere that is accessible.
+[[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running in a lcation that is accessible.
 
 To run the tests:
 
@@ -2322,7 +2322,7 @@ python -m venv env
 
 **** resource.robot
 
-Here's a resource file for the tests.  You may want to point the =SERVER= variable somewhere else, like to [[https://hcb.rkll.net]], if you have not set up the app on your local machine.
+Here's a resource file for the tests.  If you have not set up the app on your local machine, you may want to point the =SERVER= variable someplace else, like to [[https://hcb.rkll.net]].
 
 #+header: :tangle hcb-frontend/tests/resource.robot
 #+begin_src robot
@@ -2355,7 +2355,7 @@ robotframework-browser
 
 **** homepage.robot
 
-These are tests for the homepage.
+These are the tests for the homepage.
 
 #+header: :tangle hcb-frontend/tests/homepage.robot
 #+begin_src robot
@@ -2382,7 +2382,6 @@ Random button links to /random-station
 
 Contains navbar
     Navbar exists
-
 #+end_src
 
 **** journeys.robot
