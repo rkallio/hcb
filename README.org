@@ -2399,6 +2399,20 @@ Resource       resource.robot
 ,*** Variables ***
 ${JOURNEYS_URL}  ${SERVER}/journeys
 
+,*** Keywords ***
+Clicking ${column_id} orders by ${query}
+    Click  id=${column_id}
+    Get URL  *=  ${query}
+
+Clicking ${column_id} sorts in ascending order
+    Click  id=${column_id}
+    GET URL  *=  direction=ascending
+
+Clicking ${column_id} twice sorts in descending order
+    Click  id=${column_id}
+    Click  id=${column_id}
+    GET URL  *=  direction=descending
+
 ,*** Test Cases ***
 Title contains Journeys
     Get Title  *=  Journeys
@@ -2421,13 +2435,58 @@ Searching adds query parameter search to url
     Type Text  form input  hello
     Click  form button
     Get Url  *=  search=hello
+
+Navigating to next page updates page url
+    Click  id=next-page
+    Get URL  *=  page=2
+
+Navigating to previous page updates page url
+    Click  id=next-page
+    Click  id=previous-page
+    Get URL  *=  page=1
+
+Clicking Departure Station column header orders by Departure Station
+    Clicking departure-station orders by order_by=departure_station
+
+Clicking Departure Station column header sorts in ascending order
+    Clicking departure-station sorts in ascending order
+
+Clicking Departure Station column header twice sorts in descending order
+    Clicking departure-station twice sorts in descending order
+
+Clicking Return Station column header orders by Return Station
+    Clicking return-station orders by order_by=return_station
+
+Clicking Return Station column header sorts in ascending order
+    Clicking return-station sorts in ascending order
+
+Clicking Return Station column header twice sorts in descending order
+    Clicking return-station twice sorts in descending order
+
+Clicking Distance column header orders by Distance
+    Clicking distance orders by order_by=distance
+
+Clicking Distance column header sorts in ascending order
+    Clicking distance sorts in ascending order
+
+Clicking Distance column header twice sorts in descending order
+    Clicking distance twice sorts in descending order
+
+Clicking Duration column header orders by Duration
+    Clicking duration orders by order_by=duration
+
+Clicking Duration column header sorts in ascending order
+    Clicking duration sorts in ascending order
+
+Clicking Duration column header twice sorts in descending order
+    Clicking duration twice sorts in descending order
 #+end_src
 
 **** stations.robot
 
 These test the =/stations= path.
 
-#+header: :tangle hcb-frontned/tests/stations.robot
+#+header: :tangle hcb-frontend/tests/stations.robot
 #+begin_src robot
 ,*** Settings ***
 Documentation  Tests for the app's stations page
@@ -2458,7 +2517,62 @@ Search contains placeholder text
 Searching adds query parameter search to url
     Type Text  form input  hello
     Click  form button
-    Get Url  *=  search=hello
+    Get URL  *=  search=hello
+
+Navigating to next page updates page url
+    Click  id=next-page
+    Get URL  *=  page=2
+
+Navigating to previous page updates page url
+    Click  id=next-page
+    Click  id=previous-page
+    Get URL  *=  page=1
+#+end_src
+
+**** station.robot
+
+These test the =/stations/<id>= path.
+
+#+header: :tangle hcb-frontend/tests/station.robot
+#+begin_src robot
+,*** Settings ***
+Documentation  Tests for the app's station page
+Suite Setup     New Page  ${STATION_URL}
+Resource       resource.robot
+
+,*** Variables ***
+${STATION_URL}  ${SERVER}/stations/1
+
+,*** Test Cases ***
+Title contains Helsinki city bikes
+    Title contains Helsinki city bikes
+
+Page contains station name
+    Get Element  id=station-name
+
+Page contains station address
+    Get Element  id=station-address
+
+Page contains details
+    Get Element  text=Details for
+
+Page contains journeys started here
+    Get Element  text=Journeys started
+
+Page contains journeys ended here
+    Get Element  text=Journeys ended
+
+Page contains average journey distance from here
+    Get Element  text=Average journey from here
+
+Page contains average journey distance to here
+    Get Element  text=Average journey to here
+
+Page contains top destinations
+    Get Element  text=Top destinations
+
+Page contains top origins
+    Get Element  text=Top origins
 #+end_src
 
 *** requirements.txt
@@ -2731,12 +2845,12 @@ Served when visiting =/journeys=.
   Journeys
 {% endblock %}
 
-{% macro _header_link(column_name, column_readable_name, direction, sort_icon, search_term) %}
-  <a href="{{ url_for('journeys', page=1, search=search_term, order_by=column_name, direction=direction) }}">{{ column_readable_name }}</a>
+{% macro _header_link(column_name, column_id, column_readable_name, direction, sort_icon, search_term) %}
+  <a id="{{ column_id }}" href="{{ url_for('journeys', page=1, search=search_term, order_by=column_name, direction=direction) }}">{{ column_readable_name }}</a>
   <i class="{{ sort_icon }}"></i>
 {% endmacro %}
 
-{% macro _table_header_element(column_name, column_readable_name, order_by, data_type, direction, search_term) %}
+{% macro _table_header_element(column_name, column_id, column_readable_name, order_by, data_type, direction, search_term) %}
   {% if data_type == 'numeric' %}
     {% if direction == 'ascending' %}
       {% set icon = 'bi-sort-numeric-down' %}
@@ -2756,9 +2870,9 @@ Served when visiting =/journeys=.
 
   <th>
     {% if order_by == column_name and direction == 'ascending' %}
-      {{ _header_link(column_name, column_readable_name, 'descending', icon, search_term) }}
+      {{ _header_link(column_name, column_id, column_readable_name, 'descending', icon, search_term) }}
     {% else %}
-      {{ _header_link(column_name, column_readable_name, 'ascending', icon, search_term) }}
+      {{ _header_link(column_name, column_id, column_readable_name, 'ascending', icon, search_term) }}
     {% endif %}
   </th>
 {% endmacro %}
@@ -2786,10 +2900,10 @@ Served when visiting =/journeys=.
           <table class="table table-striped table-hover">
             <thead>
              <tr>
-               {{ _table_header_element('departure_station', 'Departure Station', order_by, 'alpha', direction, search_term) }}
-               {{ _table_header_element('return_station', 'Return Station', order_by, 'alpha', direction, search_term) }}
-               {{ _table_header_element('distance', 'Covered distance (km)', order_by, 'numeric', direction, search_term) }}
-               {{ _table_header_element('duration', 'Duration (m)', order_by, 'numeric', direction, search_term) }}
+               {{ _table_header_element('departure_station', 'departure-station', 'Departure Station', order_by, 'alpha', direction, search_term) }}
+               {{ _table_header_element('return_station', 'return-station', 'Return Station', order_by, 'alpha', direction, search_term) }}
+               {{ _table_header_element('distance', 'distance', 'Covered distance (km)', order_by, 'numeric', direction, search_term) }}
+               {{ _table_header_element('duration', 'duration', 'Duration (m)', order_by, 'numeric', direction, search_term) }}
               </tr>
             </thead>
             <tbody>
@@ -2819,7 +2933,7 @@ Served when visiting =/journeys=.
         <ul class="pagination">
           <li class="page-item">
             <a
-              class="page-link"
+              class="page-link" id="previous-page"
               href="{{ url_for('journeys', page=previous_page, search=search_term, order_by=order_by, direction=direction) }}">
               Previous
             </a>
@@ -2832,7 +2946,7 @@ Served when visiting =/journeys=.
             </a>
           </li>
           <li class="page-item">
-            <a class="page-link"
+            <a class="page-link" id="next-page"
                href="{{ url_for('journeys', page=next_page, search=search_term, order_by=order_by, direction=direction) }}">
                Next
             </a>
@@ -2904,7 +3018,7 @@ Served when visiting =/stations=.
         <ul class="pagination">
           <li class="page-item">
             <a
-              class="page-link"
+              class="page-link" id="previous-page"
               href="{{ url_for('stations', page=previous_page, search=search_term) }}">
               Previous
             </a>
@@ -2917,7 +3031,7 @@ Served when visiting =/stations=.
             </a>
           </li>
           <li class="page-item">
-            <a class="page-link"
+            <a class="page-link" id="next-page"
                href="{{ url_for('stations', page=next_page, search=search_term) }}">
                Next
             </a>
@@ -2945,9 +3059,9 @@ Served when visiting =station/<id>=.
       <div class="col-12 col-md-6">
         <div class="row py-3">
           <div class="col">
-            <h1>{{ station.name }}</h1>
-            <h2>{{ station.address }}</h2>
-            </div>
+            <h1 id="station-name">{{ station.name }}</h1>
+            <h2 id="station-address">{{ station.address }}</h2>
+          </div>
         </div>
         <div class="row">
         </div>
