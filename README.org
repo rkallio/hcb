@@ -246,6 +246,7 @@ PSQL_HOST=postgres-server
 PSQL_PORT=5432
 HCBB_HOST=0.0.0.0
 HCBB_PORT=5433
+HCBB_CACHE_MAX_AGE=3600
 #+end_src
 
 ** Run up the frontend
@@ -284,6 +285,7 @@ CMD python main.py
 HCBF_HOST=0.0.0.0
 HCBF_PORT=5434
 HCBF_BACKEND_URL=http://hcb-backend:5433
+HCBF_CACHE_MAX_AGE=3600
 #+end_src
 
 * Cleaning up
@@ -508,10 +510,94 @@ CLOCK: [2023-04-15 Sat 17:00]--[2023-04-15 Sat 17:35] =>  0:35
 :END:
 
 ** TODO Speed up station statistics page load
+:PROPERTIES:
+:header-args:sql: :engine postgres :dbhost localhost :dbuser postgres :dbpassword postgres :database hcb
+:END:
+:LOGBOOK:
+CLOCK: [2023-04-27 Thu 10:20]
+CLOCK: [2023-04-25 Tue 11:04]--[2023-04-25 Tue 14:04] =>  3:00
+:END:
 
-On App Engine requests to =/stations/<id>= take ~4.5 seconds to complete, because the SQL queries are heavy and the VM running Postgres has no SSD/is low powered.  Figure out a better DB layout or precompute these values or.
+Computing statistics is slow; a request to =/stations/<id>= may take up to four seconds on my machine, and up to five seconds when requesting from Cloud SQL.
 
-** Rename path =/station/<id>= to =/stations/<id>= in frontend.
+There may be multiple ways to speed this process up:
+
+*** Cache responses
+
+This is the least time consuming way to speed statistics lookups.  First lookup will still be slow, though.
+
+*** Precompute statistics
+
+There are 457 stations in the database
+
+#+name: stations
+#+begin_src sql :colnames no :results scalar :noweb yes
+SELECT COUNT(*)
+FROM station;
+#+end_src
+
+#+RESULTS: total-stations
+: 457
+
+For each station, we need to compute statistics for 7 combinations of months:
+
+#+name: month-powerset
+#+begin_src python
+import itertools
+
+def powerset(s):
+    return itertools.chain.from_iterable(
+        itertools.combinations(s, r) for r in range(len(s) + 1)
+    )
+
+pset = list(powerset(('may', 'june', 'july')))[1:]
+print(pset)
+#+end_src
+
+#+RESULTS: month-powerset
+: [('may',), ('june',), ('july',), ('may', 'june'), ('may', 'july'), ('june', 'july'), ('may', 'june', 'july')]
+
+
+Which means there are 3 199 different combinations of statistics that need to be computed.  If we assume that a single computation takes four seconds, we would require about three and a half hours to compute all statistics:
+
+#+begin_src python :noweb yes
+stations = \
+    <<stations()>>
+
+pset = \
+    <<month-powerset()>>
+
+print(len(pset) * stations)
+print(len(pset) * stations * 4 / 60 / 60, 'hours')
+#+end_src
+
+#+RESULTS:
+: 3199
+: 3.5544444444444445 hours
+
+I don't want to subject the reviewers machine to this, so discarding this option.
+
+*** Improve statistics collection queries
+
+Queries use the =station.id=, =journey.return_station_id= and =journey.departure_station_id= fields to match stations and journeys.  These are currently =STRING= columns, but they don't need to be.  Converting these columns into =INTEGER= type may speed up statistics collection.
+
+#+begin_src sql
+ALTER TABLE station
+ALTER COLUMN id TYPE INTEGER
+USING id::integer;
+#+end_src
+
+#+begin_src sql
+ALTER TABLE journey
+ALTER COLUMN departure_station_id TYPE INTEGER
+USING departure_station_id::integer;
+
+ALTER TABLE journey
+ALTER COLUMN return_station_id TYPE INTEGER
+USING return_station_id::integer;
+#+end_src
+
+Ater change: no difference in performance.
 
 ** Fix the Latin-1 encoding issue in data import.
 :LOGBOOK:
@@ -2184,6 +2270,7 @@ db_user = os.environ['PSQL_USER']
 db_pass = os.environ['PSQL_PASS']
 db_host = os.environ['PSQL_HOST']
 db_port = os.environ['PSQL_PORT']
+cache_max_age = int(os.environ['HCBB_CACHE_MAX_AGE'])
 
 journey = {
     'departure_station_id': fields.Integer,
@@ -2271,7 +2358,10 @@ class StationInfo(Resource):
         db = DB(db_name, db_user, db_pass, db_host, db_port)
         params = GetStationInfoParams(id=id, months=months)
         result = db.get_station_info(params)
-        return result
+        return result, 200, {
+            'Pragma': 'Public',
+            'Cache-Control': f'public, max-age={cache_max_age}'
+        }
 
 class RandomStation(Resource):
     def get(self):
@@ -2587,7 +2677,7 @@ requests
 
 #+header: :tangle hcb-frontend/main.py
 #+begin_src python
-from flask import Flask, render_template, request, redirect, url_for
+from flask import Flask, render_template, request, redirect, make_response, url_for
 from dataclasses import dataclass
 import requests
 import os
@@ -2595,6 +2685,7 @@ import os
 app = Flask(__name__)
 
 backend_url = os.environ['HCBF_BACKEND_URL']
+cache_max_age = int(os.environ['HCBF_CACHE_MAX_AGE'])
 
 @dataclass
 class Journey:
@@ -2719,11 +2810,19 @@ def station(station_id):
         top_origins=[StationRelationInfo(**value) for value in data['top_origins']]
     )
 
-    return render_template(
-        'station.html.j2',
-        station=station_info,
-        months=months
-    )
+    response = make_response(
+        render_template(
+            'station.html.j2',
+            station=station_info,
+            months=months
+    ))
+
+    # deprecated, does app engine still use it?
+    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
+    # https://groups.google.com/g/google-appengine/c/6xAV2Q5x8AU/m/QI26C0ofvhwJ
+    response.headers['Pragma'] = 'Public'
+    response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
+    return response
 
 @app.route('/random-station')
 def random_station():
@@ -3298,6 +3397,7 @@ runtime: python311
 service: hcb-frontend
 env_variables:
   HCBF_BACKEND_URL: https://hcb-backend-dot-helsinki-city-bikes-383419.lm.r.appspot.com
+  HCBF_CACHE_MAX_AGE: 3600
 #+end_src
 
 *** Backend configuration
@@ -3315,13 +3415,16 @@ tests
 #+header: :tangle hcb-backend/app.yaml
 #+begin_src yaml
 runtime: python311
+
 service: hcb-backend
+
 env_variables:
   PSQL_DB: hcb
   PSQL_USER: postgres
   PSQL_PASS: jafpiB-jukhe4-qutsox
   PSQL_HOST: /cloudsql/helsinki-city-bikes-383419:europe-central2:helsinki-city-bikes
   PSQL_PORT: 5432
+  HCBB_CACHE_MAX_AGE: 3600
 #+end_src
 
 *** Database export
