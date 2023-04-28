@@ -2202,7 +2202,7 @@ WITH our_station AS (
      FROM station
      WHERE fid = %(id)s
 ),
-top_destinations AS (
+top_origins AS (
      SELECT departure_station_id, COUNT(*)
      FROM journey
      JOIN our_station
@@ -2213,9 +2213,9 @@ top_destinations AS (
      LIMIT 5
 )
 SELECT station.fid as id, station.finnish_name, count
-FROM top_destinations
+FROM top_origins
 JOIN station
-ON station.id = top_destinations.departure_station_id
+ON station.id = top_origins.departure_station_id
 ORDER BY count DESC
         """
         cursor.execute(sql, params)
