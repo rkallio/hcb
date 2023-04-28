@@ -86,10 +86,10 @@ An instance of the app is running at [[https://hcb.rkll.net]].
 
 Here are short instructions for setting up the app locally.
 
-Preqreuisites:
+Prerequisites:
 
 + A browser and an archive extractor, or =curl= and =tar=
-+ A container engine like Docker.  The engine's VM should have access to at least 4GB of memory.
++ A container engine like [[https://www.docker.com][Docker]].  The engine's VM should have access to at least 4GB because the data import operation is a memory hog.
 
 Note that I used [[https://podman.io][Podman]] instead of Docker as the container engine.  I know from experience that they don't quite share the same feature set.  If you run into issues, try running the commands with podman, which is very easy to install on a Linux host.
 
@@ -105,11 +105,16 @@ curl https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar \
 
 Alternatively, if you have Emacs installed on your machine, open this file in Emacs and run the command =M-x org-babel-tangle=.
 
+The extracted archive contains a =setup.sh= script that you may execute, or follow along with the instructions below.
+
 ** Define a Docker network
 
 Set up a Docker network.  This allows the networked components to talk to each other.
 
-#+begin_src sh
+#+header: :tangle setup.sh
+#+header: :shebang #!/bin/bash
+#+header: :comments org
+#+begin_src bash
 docker network create hcb
 #+end_src
 
@@ -117,9 +122,11 @@ docker network create hcb
 
 Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-docker-network][define a Docker network]].
 
-#+begin_src sh
+#+header: :tangle setup.sh
+#+header: :comments org
+#+begin_src bash
 docker run --rm --detach \
-       --name=postgres-server \
+       --name=hcb-postgres \
        --network=hcb \
        --publish 5432:5432 \
        --env POSTGRES_PASSWORD=postgres \
@@ -130,13 +137,16 @@ docker run --rm --detach \
 
 A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =docker.env=, which can be tweaked in case you run into connection issues.
 
-#+begin_src sh
-cd hcb-setup-database
+#+header: :tangle setup.sh
+#+header: :comments org
+#+begin_src bash
+pushd hcb-setup-database
 docker build --tag=hcb-setup-database .
 docker run --rm --tty \
        --network=hcb \
        --env-file=docker.env \
        hcb-setup-database
+popd
 #+end_src
 
 Here is the =Dockerfile= and the =docker.env= files for reference.
@@ -155,7 +165,7 @@ CMD python main.py
 #+begin_src conf
 PSQL_USERNAME=postgres
 PSQL_PASSWORD=postgres
-PSQL_HOST=postgres-server
+PSQL_HOST=hcb-postgres
 PSQL_PORT=5432
 #+end_src
 
@@ -163,13 +173,16 @@ PSQL_PORT=5432
 
 This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get =Killed= while processing, increase Docker's allocated memory to 4096MB.
 
-#+begin_src sh
-cd hcb-data-import
+#+header: :tangle setup.sh
+#+header: :comments org
+#+begin_src bash
+pushd hcb-data-import
 docker build --tag=hcb-data-import .
 docker run --rm --tty \
        --network=hcb \
        --env-file=docker.env \
        hcb-data-import
+popd
 #+end_src
 
 Here is the =Dockerfile= and the =docker.env= for reference.
@@ -193,7 +206,7 @@ HCBI_STATION_SOURCE=https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3c
 PSQL_DATABASE=hcb
 PSQL_USERNAME=postgres
 PSQL_PASSWORD=postgres
-PSQL_HOST=postgres-server
+PSQL_HOST=hcb-postgres
 PSQL_PORT=5432
 #+end_src
 
@@ -201,8 +214,10 @@ PSQL_PORT=5432
 
 [[#the-backend][The backend]] is untarred to =hcb-backend=.  Again, there is a =Dockerfile= and a =docker.env= provided.  Here's how you would build and run the container:
 
-#+begin_src sh
-cd hcb-backend
+#+header: :tangle setup.sh
+#+header: :comments org
+#+begin_src bash
+pushd hcb-backend
 docker build --tag=hcb-backend .
 docker run --rm --detach \
        --network=hcb \
@@ -210,6 +225,7 @@ docker run --rm --detach \
        --env-file=docker.env \
        --publish 5433:5433 \
        hcb-backend
+popd
 #+end_src
 
 To verify the backend is able to connect to psql and serve requests, try performing a HTTP GET on one of the endpoints:
@@ -241,7 +257,7 @@ CMD python main.py
 PSQL_DB=hcb
 PSQL_USER=postgres
 PSQL_PASS=postgres
-PSQL_HOST=postgres-server
+PSQL_HOST=hcb-postgres
 PSQL_PORT=5432
 HCBB_HOST=0.0.0.0
 HCBB_PORT=5433
@@ -253,8 +269,10 @@ HCBB_CACHE_MAX_AGE=3600
 
 [[#the-frontend][The frontend]] is untarred to =hcb-frontend=.  Build and run it.
 
-#+begin_src sh
-cd hcb-frontend
+#+header: :tangle setup.sh
+#+header: :comments org
+#+begin_src bash
+pushd hcb-frontend
 docker build -t hcb-frontend .
 docker run --rm --detach \
        --network=hcb \
@@ -262,6 +280,7 @@ docker run --rm --detach \
        --env-file=docker.env \
        --publish=5434:5434 \
        hcb-frontend
+popd
 #+end_src
 
 To verify everything is working, visit [[http://127.0.0.1:5434/]] using your browser.
@@ -293,10 +312,12 @@ HCBF_CACHE_MAX_AGE=3600
 
 Run the following commands to remove docker images, containers and networks related to this project:
 
-#+begin_src sh
-docker kill hcb-frontend hcb-backend postgres-server
-docker network rm hcb
-docker rmi hcb-frontend hcb-backend hcb-data-import hcb-setup-database postgres:latest python:3.11-slim
+#+header: :tangle cleanup.sh
+#+header: :shebang #!/bin/bash
+#+header: :comments org
+#+begin_src bash
+docker network rm --force hcb
+docker rmi hcb-frontend hcb-backend hcb-data-import hcb-setup-database
 #+end_src
 
 * The assignment
@@ -519,72 +540,14 @@ CLOCK: [2023-04-15 Sat 17:00]--[2023-04-15 Sat 17:35] =>  0:35
 :header-args:sql: :engine postgres :dbhost localhost :dbuser postgres :dbpassword postgres :database hcb
 :END:
 :LOGBOOK:
-CLOCK: [2023-04-27 Thu 10:20]
+CLOCK: [2023-04-28 Fri 18:35]--[2023-04-28 Fri 19:22] =>  0:47
+CLOCK: [2023-04-27 Thu 10:20]--[2023-04-27 Thu 15:37] =>  5:17
 CLOCK: [2023-04-25 Tue 11:04]--[2023-04-25 Tue 14:04] =>  3:00
 :END:
 
-Computing statistics is slow; a request to =/stations/<id>= may take up to four seconds on my machine, and up to five seconds when requesting from Cloud SQL.
-
-There may be multiple ways to speed this process up:
-
-*** Cache responses
-
-This is the least time consuming way to speed statistics lookups.  First lookup will still be slow, though.
-
-*** Precompute statistics
-
-There are 457 stations in the database
-
-#+name: stations
-#+begin_src sql :colnames no :results scalar :noweb yes
-SELECT COUNT(*)
-FROM station;
-#+end_src
-
-#+RESULTS: total-stations
-: 457
-
-For each station, we need to compute statistics for 7 combinations of months:
-
-#+name: month-powerset
-#+begin_src python
-import itertools
-
-def powerset(s):
-    return itertools.chain.from_iterable(
-        itertools.combinations(s, r) for r in range(len(s) + 1)
-    )
-
-pset = list(powerset(('may', 'june', 'july')))[1:]
-print(pset)
-#+end_src
-
-#+RESULTS: month-powerset
-: [('may',), ('june',), ('july',), ('may', 'june'), ('may', 'july'), ('june', 'july'), ('may', 'june', 'july')]
-
-
-Which means there are 3 199 different combinations of statistics that need to be computed.  If we assume that a single computation takes four seconds, we would require about three and a half hours to compute all statistics:
-
-#+begin_src python :noweb yes
-stations = \
-    <<stations()>>
-
-pset = \
-    <<month-powerset()>>
-
-print(len(pset) * stations)
-print(len(pset) * stations * 4 / 60 / 60, 'hours')
-#+end_src
-
-#+RESULTS:
-: 3199
-: 3.5544444444444445 hours
-
-I don't want to subject the reviewers machine to this, so discarding this option.
-
 *** Improve statistics collection queries
 
-Queries use the =station.id=, =journey.return_station_id= and =journey.departure_station_id= fields to match stations and journeys.  These are currently =STRING= columns, but they don't need to be.  Converting these columns into =INTEGER= type may speed up statistics collection.
+Some =TEXT= type columns could be =INTEGER= type instead.  This change has no perceivable change in performance however.
 
 #+begin_src sql
 ALTER TABLE station
@@ -602,7 +565,82 @@ ALTER COLUMN return_station_id TYPE INTEGER
 USING return_station_id::integer;
 #+end_src
 
-Ater change: no difference in performance.
+Statistics are grouped by month.  Creating an index on the month of =departure_time= reduces query times by a modest 15%.  But it slows the queries below by 300% when combined with the =journey_departure_id= and =journey_return_id= indices, don't use this.
+
+#+begin_src sql
+CREATE INDEX journey_departure_month_index
+ON journey (EXTRACT(MONTH FROM departure_time));
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+
+#+begin_src sql
+DROP INDEX journey_departure_month_index;
+#+end_src
+
+#+RESULTS:
+| DROP INDEX |
+|------------|
+
+Journeys are joined to station using =departure_station_id= and =return_station_id=.  Creating an index on these columns reduces query times by 90% or more.
+
+#+begin_src sql
+CREATE INDEX journey_departure_station_id_index
+ON journey(departure_station_id);
+
+CREATE INDEX journey_return_station_id_index
+ON journey(return_station_id);
+#+end_src
+
+#+RESULTS:
+| CREATE INDEX |
+|--------------|
+| CREATE INDEX |
+
+#+begin_src sql
+DROP INDEX journey_departure_station_id_index;
+
+DROP INDEX journey_return_station_id_index;
+#+end_src
+
+#+RESULTS:
+|---|
+
+#+header: :results scalar
+#+begin_src sql
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT COUNT(*)
+FROM station
+JOIN journey
+ON station.id = journey.departure_station_id
+WHERE fid = 1 AND EXTRACT(MONTH FROM departure_time) in (5, 6, 7);
+#+end_src
+
+#+RESULTS:
+#+begin_example
+QUERY PLAN
+Aggregate  (cost=15591.01..15591.02 rows=1 width=8) (actual time=44.507..44.509 rows=1 loops=1)
+  Buffers: shared hit=2254
+  ->  Nested Loop  (cost=87.27..15590.71 rows=117 width=0) (actual time=1.234..44.206 rows=2368 loops=1)
+        Buffers: shared hit=2254
+        ->  Index Scan using station_pkey on station  (cost=0.27..8.29 rows=1 width=4) (actual time=0.050..0.056 rows=1 loops=1)
+              Index Cond: (fid = 1)
+              Buffers: shared hit=3
+        ->  Bitmap Heap Scan on journey  (cost=86.99..15581.25 rows=117 width=4) (actual time=1.178..43.718 rows=2368 loops=1)
+              Recheck Cond: (departure_station_id = station.id)
+              Filter: (EXTRACT(month FROM departure_time) = ANY ('{5,6,7}'::numeric[]))
+              Heap Blocks: exact=2246
+              Buffers: shared hit=2251
+              ->  Bitmap Index Scan on journey_departure_station_id_index  (cost=0.00..86.96 rows=7805 width=0) (actual time=0.669..0.669 rows=2368 loops=1)
+                    Index Cond: (departure_station_id = station.id)
+                    Buffers: shared hit=5
+Planning:
+  Buffers: shared hit=339
+Planning Time: 2.388 ms
+Execution Time: 44.725 ms
+#+end_example
 
 ** Fix the Latin-1 encoding issue in data import.
 :LOGBOOK:
@@ -732,7 +770,7 @@ CREATE TABLE journey (
        duration INTEGER
 );
 
--- We need to sort on the following columns
+-- We need to sort filter and search on the following columns
 CREATE INDEX distance_index
 ON journey(distance);
 
@@ -744,6 +782,12 @@ ON journey(departure_station_name);
 
 CREATE INDEX return_station_name_index
 ON journey(return_station_name);
+
+CREATE INDEX journey_departure_station_id_index
+ON journey(departure_station_id);
+
+CREATE INDEX journey_return_station_id_index
+ON journey(return_station_id);
 
 COMMIT;
 #+end_src
@@ -3447,5 +3491,5 @@ env_variables:
 Here we =pg_dump= a locally created database to disk, so that we can import it into [[https://cloud.google.com/sql][Cloud SQL]].  Upload the dump to [[https://cloud.google.com/storage][Cloud Storage]], and import it in [[https://cloud.google.com/sql][Cloud SQL]].
 
 #+begin_src sh
-docker run --rm -it --network=hcb -ePGPASSWORD=postgres postgres pg_dump -U postgres -h postgres-server -d hcb | gzip > pg.dmp.gz
+docker run --rm -it --network=hcb -ePGPASSWORD=postgres postgres pg_dump -U postgres -h hcb-postgres -d hcb | gzip > pg.dmp.gz
 #+end_src
