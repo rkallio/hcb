@@ -128,18 +128,18 @@ docker run --rm --detach \
 
 ** Declare the database
 
-A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =sample.env=, which can be tweaked in case you run into connection issues.
+A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =docker.env=, which can be tweaked in case you run into connection issues.
 
 #+begin_src sh
 cd hcb-setup-database
 docker build --tag=hcb-setup-database .
 docker run --rm --tty \
        --network=hcb \
-       --env-file=sample.env \
+       --env-file=docker.env \
        hcb-setup-database
 #+end_src
 
-Here is the =Dockerfile= and the =sample.env= files for reference.
+Here is the =Dockerfile= and the =docker.env= files for reference.
 
 #+header: :tangle hcb-setup-database/Dockerfile
 #+begin_src dockerfile
@@ -151,7 +151,7 @@ ADD main.py .
 CMD python main.py
 #+end_src
 
-#+header: :tangle hcb-setup-database/sample.env
+#+header: :tangle hcb-setup-database/docker.env
 #+begin_src conf
 PSQL_USERNAME=postgres
 PSQL_PASSWORD=postgres
@@ -168,11 +168,11 @@ cd hcb-data-import
 docker build --tag=hcb-data-import .
 docker run --rm --tty \
        --network=hcb \
-       --env-file=sample.env \
+       --env-file=docker.env \
        hcb-data-import
 #+end_src
 
-Here is the =Dockerfile= and the =sample.env= for reference.
+Here is the =Dockerfile= and the =docker.env= for reference.
 
 #+header: :tangle hcb-data-import/Dockerfile
 #+begin_src dockerfile
@@ -186,7 +186,7 @@ ADD journeys.py .
 CMD python main.py
 #+end_src
 
-#+header: :tangle hcb-data-import/sample.env
+#+header: :tangle hcb-data-import/docker.env
 #+begin_src conf
 HCBI_JOURNEY_SOURCES=https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv,https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv,https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv
 HCBI_STATION_SOURCE=https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv
@@ -199,7 +199,7 @@ PSQL_PORT=5432
 
 ** Run up the backend
 
-[[#the-backend][The backend]] is untarred to =hcb-backend=.  Again, there is a =Dockerfile= and a =sample.env= provided.  Here's how you would build and run the container:
+[[#the-backend][The backend]] is untarred to =hcb-backend=.  Again, there is a =Dockerfile= and a =docker.env= provided.  Here's how you would build and run the container:
 
 #+begin_src sh
 cd hcb-backend
@@ -207,7 +207,7 @@ docker build --tag=hcb-backend .
 docker run --rm --detach \
        --network=hcb \
        --name=hcb-backend \
-       --env-file=sample.env \
+       --env-file=docker.env \
        --publish 5433:5433 \
        hcb-backend
 #+end_src
@@ -223,7 +223,7 @@ Something like this should work:
 curl http://localhost:5433/journeys?page_size=5
 #+end_src
 
-Here are the =Dockerfile= and =sample.env= file, as a reference.
+Here are the =Dockerfile= and =docker.env= file, as a reference.
 
 #+header: :tangle hcb-backend/Dockerfile
 #+begin_src dockerfile
@@ -236,7 +236,7 @@ ADD db.py .
 CMD python main.py
 #+end_src
 
-#+header: :tangle hcb-backend/sample.env
+#+header: :tangle hcb-backend/docker.env
 #+begin_src conf
 PSQL_DB=hcb
 PSQL_USER=postgres
@@ -245,6 +245,7 @@ PSQL_HOST=postgres-server
 PSQL_PORT=5432
 HCBB_HOST=0.0.0.0
 HCBB_PORT=5433
+HCBB_SET_HTTP_CACHE_HEADERS=False
 HCBB_CACHE_MAX_AGE=3600
 #+end_src
 
@@ -258,14 +259,14 @@ docker build -t hcb-frontend .
 docker run --rm --detach \
        --network=hcb \
        --name=hcb-frontend \
-       --env-file=sample.env \
+       --env-file=docker.env \
        --publish=5434:5434 \
        hcb-frontend
 #+end_src
 
 To verify everything is working, visit [[http://127.0.0.1:5434/]] using your browser.
 
-Once again, here are the =Dockerfile= and =sample.env= for reference.
+Once again, here are the =Dockerfile= and =docker.env= for reference.
 
 #+header: :tangle hcb-frontend/Dockerfile
 #+begin_src dockerfile
@@ -279,11 +280,12 @@ COPY static/ static/
 CMD python main.py
 #+end_src
 
-#+header: :tangle hcb-frontend/sample.env
+#+header: :tangle hcb-frontend/docker.env
 #+begin_src conf
 HCBF_HOST=0.0.0.0
 HCBF_PORT=5434
 HCBF_BACKEND_URL=http://hcb-backend:5433
+HCBF_SET_HTTP_CACHE_HEADERS=False
 HCBF_CACHE_MAX_AGE=3600
 #+end_src
 
@@ -2264,6 +2266,7 @@ from flask import Flask, request
 from flask_restful import Api, Resource, fields, marshal_with
 from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
 import os
+import ast
 
 app = Flask(__name__)
 api = Api(app)
@@ -2273,6 +2276,7 @@ db_user = os.environ['PSQL_USER']
 db_pass = os.environ['PSQL_PASS']
 db_host = os.environ['PSQL_HOST']
 db_port = os.environ['PSQL_PORT']
+set_http_cache_headers = ast.literal_eval(os.environ['HCBB_SET_HTTP_CACHE_HEADERS'])
 cache_max_age = int(os.environ['HCBB_CACHE_MAX_AGE'])
 
 journey = {
@@ -2361,10 +2365,14 @@ class StationInfo(Resource):
         db = DB(db_name, db_user, db_pass, db_host, db_port)
         params = GetStationInfoParams(id=id, months=months)
         result = db.get_station_info(params)
-        return result, 200, {
-            'Pragma': 'Public',
-            'Cache-Control': f'public, max-age={cache_max_age}'
-        }
+        headers = {}
+
+        if set_http_cache_headers:
+            headers = {
+                'Pragma': 'Public',
+                'Cache-Control': f'public, max-age={cache_max_age}'
+            }
+        return result, 200, headers
 
 class RandomStation(Resource):
     def get(self):
@@ -2684,10 +2692,11 @@ from flask import Flask, render_template, request, redirect, make_response, url_
 from dataclasses import dataclass
 import requests
 import os
-
+import ast
 app = Flask(__name__)
 
 backend_url = os.environ['HCBF_BACKEND_URL']
+set_http_cache_headers = ast.literal_eval(os.environ['HCBF_SET_HTTP_CACHE_HEADERS'])
 cache_max_age = int(os.environ['HCBF_CACHE_MAX_AGE'])
 
 @dataclass
@@ -2820,11 +2829,12 @@ def station(station_id):
             months=months
     ))
 
-    # deprecated, does app engine still use it?
-    # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
-    # https://groups.google.com/g/google-appengine/c/6xAV2Q5x8AU/m/QI26C0ofvhwJ
-    response.headers['Pragma'] = 'Public'
-    response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
+    if set_http_cache_headers:
+        # deprecated, does app engine still use it?
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
+        # https://groups.google.com/g/google-appengine/c/6xAV2Q5x8AU/m/QI26C0ofvhwJ
+        response.headers['Pragma'] = 'Public'
+        response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
     return response
 
 @app.route('/random-station')
@@ -3400,6 +3410,7 @@ runtime: python311
 service: hcb-frontend
 env_variables:
   HCBF_BACKEND_URL: https://hcb-backend-dot-helsinki-city-bikes-383419.lm.r.appspot.com
+  HCBF_SET_HTTP_CACHE_HEADERS: True
   HCBF_CACHE_MAX_AGE: 3600
 #+end_src
 
@@ -3427,6 +3438,7 @@ env_variables:
   PSQL_PASS: jafpiB-jukhe4-qutsox
   PSQL_HOST: /cloudsql/helsinki-city-bikes-383419:europe-central2:helsinki-city-bikes
   PSQL_PORT: 5432
+  HCBB_SET_HTTP_CACHE_HEADERS: True
   HCBB_CACHE_MAX_AGE: 3600
 #+end_src
 
