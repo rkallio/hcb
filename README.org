@@ -99,7 +99,7 @@ Source files are tangled from this readme file into a tarball located at [[https
 
 #+header: :results scalar
 #+begin_src sh
-curl https://storage.googleapis.com/hcb-helsinki-city-bikes/sources.tar \
+curl https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar \
     | tar xv
 #+end_src
 
