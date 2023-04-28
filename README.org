@@ -188,7 +188,7 @@ CMD python main.py
 
 #+header: :tangle hcb-data-import/sample.env
 #+begin_src conf
-HCBI_JOURNEY_SOURCES=https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv
+HCBI_JOURNEY_SOURCES=https://dev.hsl.fi/citybikes/od-trips-2021/2021-05.csv,https://dev.hsl.fi/citybikes/od-trips-2021/2021-06.csv,https://dev.hsl.fi/citybikes/od-trips-2021/2021-07.csv
 HCBI_STATION_SOURCE=https://opendata.arcgis.com/datasets/726277c507ef4914b0aec3cbcfcbfafc_0.csv
 PSQL_DATABASE=hcb
 PSQL_USERNAME=postgres
@@ -1312,7 +1312,7 @@ from datetime import datetime
 import json
 import psycopg2
 
-journey_sources = os.environ['HCBI_JOURNEY_SOURCES'].split(' ')
+journey_sources = os.environ['HCBI_JOURNEY_SOURCES'].split(',')
 psql_database = os.environ['PSQL_DATABASE']
 psql_user = os.environ['PSQL_USERNAME']
 psql_password = os.environ['PSQL_PASSWORD']
