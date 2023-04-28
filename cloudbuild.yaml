@@ -20,7 +20,7 @@ steps:
     args:
       - -c
       - |
-        tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database
+        tar cvf sources.tar hcb-backend hcb-frontend hcb-data-import hcb-setup-database setup.sh cleanup.sh
     id: make-source-tarball
     waitFor: ['tangle-sources']
 
