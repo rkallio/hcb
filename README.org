@@ -1357,6 +1357,7 @@ from collections import namedtuple
 from datetime import datetime
 import json
 import psycopg2
+from psycopg2.extras import execute_batch
 
 journey_sources = os.environ['HCBI_JOURNEY_SOURCES'].split(',')
 psql_database = os.environ['PSQL_DATABASE']
@@ -1650,7 +1651,7 @@ def push_to_sql(journeypath):
     """
     with open(journeypath, 'r') as fp:
         journeys = [
-            Journey.from_dict(dct) for dct in json.load(fp)
+            Journey.from_dict(dct).to_dict() for dct in json.load(fp)
         ]
 
     connection = psycopg2.connect(
@@ -1684,11 +1685,7 @@ VALUES (
 )
     """
     with connection.cursor() as cursor:
-        for i, journey in enumerate(journeys):
-            dct = journey.to_dict()
-            cursor.execute(insert_statement, dct)
-            if i % 100_000 == 0:
-                print(f'{i}/{len(journeys)}')
+        execute_batch(cursor, insert_statement, journeys, page_size=5000)
     connection.commit()
     print('done')
     connection.close()
