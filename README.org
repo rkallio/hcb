@@ -32,6 +32,7 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#seed-data-through-the-api][Seed data through the API]]
   - [[#write-tests-for-frontend][Write tests for frontend]]
   - [[#write-tests-for-backend][Write tests for backend]]
   - [[#speed-up-station-statistics-page-load][Speed up station statistics page load]]
@@ -59,12 +60,13 @@
     - [[#stations-data-import][Stations data import]]
     - [[#journeys-data-import][Journeys data import]]
   - [[#the-backend][The backend]]
-    - [[#tests][Tests]]
+    - [[#robot-tests-for-backend][Robot tests for backend]]
+    - [[#unit-tests-for-backend][Unit tests for backend]]
     - [[#requirementstxt-1][requirements.txt]]
     - [[#dbpy][db.py]]
     - [[#mainpy-1][main.py]]
   - [[#the-frontend][The frontend]]
-    - [[#tests-1][Tests]]
+    - [[#tests-for-frontend][Tests for frontend]]
     - [[#requirementstxt-2][requirements.txt]]
     - [[#the-application-entrypoint-mainpy][The application entrypoint (main.py)]]
     - [[#html-templates][HTML templates]]
@@ -82,13 +84,24 @@
 
 HCB is a set of software for exploring data related to Helsinki city bikes.
 
-It started life as a Python program that interfaced with a SQLite3 database and rendered HTML for clients to consume.  Due to the project requirements, the app was separated in to three components: a PostgreSQL database, a "backend", and a "frontend" server.
+In the beginning it was a Python program that queried an SQLite3 database and rendered HTML over HTTP.  Due to the project requirements, the app was separated in to three components: a PostgreSQL database, a backend, and a frontend.
 
-The backend is implemented in Python using Flask and flask_restful.  It consumes and produces HTTP messages.  The data source used is a PostgreSQL database.
+The backend is implemented in Python using [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].  It consumes and produces HTTP messages.  The data source used is a PostgreSQL database.
 
-The frontend is implemented in Python using Flask.  It interfaces between a client and the backend.
+The frontend is implemented in Python using [[https://flask.palletsprojects.com][Flask]].  It interfaces between a client and the backend over HTTP.
 
 There are also two additional Python programs, one for initializing the database, and another for seeding the database with data provided in the assignment.
+
+Testing was heavily encouraged in the project assignment.  I decided to implement only the tip of the testing pyramid due to a few reasons:
+
+1. Useful unit tests necessitate modularized code
+2. Restructuring the source code into modules takes time and adds boilerplate and more complexity
+3. I am very familiar with unit testing so I wanted to learn about other topics instead
+4. The code won't be maintained by me or anyone else, so spending time on unit tests provides little benefit
+
+There are a few unit tests for the backend, see [[#unit-tests-for-backend][Unit tests for backend]]].
+
+Instructions for running the E2E tests are documented in [[#tests-for-frontend][Tests for frontend]] and [[#robot-tests-for-backend][Robot tests for backend]].
 
 An instance of the app is running at [[https://hcb.rkll.net]].
 
@@ -493,7 +506,7 @@ Both frontend and backend run in GCP.
 
 **** Implement E2E tests
 
-Some tests implemented using robot framework.
+Tests for the backend and frontend implemented using [[https://robotframework.org][Robot Framework]].
 
 **** Create UI for adding journeys or bicycle stations
 
@@ -539,17 +552,23 @@ Not implemented.
 + [[mailto:meri.merkkiniemi@solita.fi]]
 
 * Minutes & Journal
+
+** Seed data through the API
+:LOGBOOK:
+CLOCK: [2023-05-06 Sat 22:23]
+:END:
+
 ** Write tests for frontend
 :LOGBOOK:
 CLOCK: [2023-04-25 Sat 12:00]--[2023-04-25 Sat 16:00] =>  4:00
 :END:
 
-** TODO Write tests for backend
+** Write tests for backend
 :LOGBOOK:
 CLOCK: [2023-04-15 Sat 17:00]--[2023-04-15 Sat 17:35] =>  0:35
 :END:
 
-** TODO Speed up station statistics page load
+** Speed up station statistics page load
 :PROPERTIES:
 :header-args:sql: :engine postgres :dbhost localhost :dbuser postgres :dbpassword postgres :database hcb
 :END:
@@ -1720,7 +1739,19 @@ A client may interface with the backend via a HTTP.  HTTP requests are translate
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
-*** Tests
+*** Robot tests for backend
+
+*** Unit tests for backend
+
+There are a few unit tests that you can run via.
+
+#+begin_src sh
+cd hcb-backend
+python -m venv test-env
+./test-env/bin/pip install --upgrade pip
+./test-env/bin/pip install --requirement requirements.txt
+./test-env/bin/python -m unittest
+#+end_src
 
 **** Package header
 
@@ -2322,6 +2353,7 @@ from flask_restful import Api, Resource, fields, marshal_with
 from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
 import os
 import ast
+import functools
 
 app = Flask(__name__)
 api = Api(app)
@@ -2333,6 +2365,23 @@ db_host = os.environ['PSQL_HOST']
 db_port = os.environ['PSQL_PORT']
 set_http_cache_headers = ast.literal_eval(os.environ['HCBB_SET_HTTP_CACHE_HEADERS'])
 cache_max_age = int(os.environ['HCBB_CACHE_MAX_AGE'])
+
+def maybe_set_cache_headers(response_creator):
+    """Maybe add cache headers to the response.
+
+    Whether the headers are set depends on the value of
+    set_http_cache_headers.
+
+    """
+    @functools.wraps(response_creator)
+    def wrapper(*args, **kwargs):
+        body, status, headers = response_creator(*args, **kwargs)
+
+        if set_http_cache_headers:
+            headers['Pragma'] = 'Public'
+            headers['Cache-Control'] = f'public, max-age={cache_max_age}'
+        return body, status, headers
+    return wrapper
 
 journey = {
     'departure_station_id': fields.Integer,
@@ -2346,6 +2395,7 @@ journey = {
 
 class JourneyList(Resource):
     @marshal_with(journey)
+    @maybe_set_cache_headers
     def get(self):
         page = int(request.args.get('page', '1'))
         page_size = int(request.args.get('page_size', '10'))
@@ -2364,7 +2414,7 @@ class JourneyList(Resource):
         db = DB(db_name, db_user, db_pass, db_host, db_port)
 
         result = db.get_journeys(params)
-        return result, 200
+        return result, 200, {}
 
 station = {
     'id': fields.Integer,
@@ -2374,6 +2424,7 @@ station = {
 
 class StationList(Resource):
     @marshal_with(station)
+    @maybe_set_cache_headers
     def get(self):
         page = int(request.args.get('page', '1'))
         page_size = int(request.args.get('page_size', '10'))
@@ -2386,7 +2437,7 @@ class StationList(Resource):
         )
         db = DB(db_name, db_user, db_pass, db_host, db_port)
         result = db.get_stations(params)
-        return result, 200
+        return result, 200, {}
 
 station_relation_info = {
     'id': fields.Integer,
@@ -2411,6 +2462,7 @@ station_info = {
 
 class StationInfo(Resource):
     @marshal_with(station_info)
+    @maybe_set_cache_headers
     def get(self, id):
         id = int(id)
         months = request.args.getlist('month')
@@ -2420,14 +2472,7 @@ class StationInfo(Resource):
         db = DB(db_name, db_user, db_pass, db_host, db_port)
         params = GetStationInfoParams(id=id, months=months)
         result = db.get_station_info(params)
-        headers = {}
-
-        if set_http_cache_headers:
-            headers = {
-                'Pragma': 'Public',
-                'Cache-Control': f'public, max-age={cache_max_age}'
-            }
-        return result, 200, headers
+        return result, 200, {}
 
 class RandomStation(Resource):
     def get(self):
@@ -2455,7 +2500,7 @@ The frontend offers the following views:
 
 It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
 
-*** Tests
+*** Tests for frontend
 
 [[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running in a lcation that is accessible.
 
@@ -2465,16 +2510,18 @@ To run the tests:
 2. Create a virtual environment
 3. Install dependencies declared in =robot-requirements.txt=.
 4. Install [[https://robotframework-browser.org][Robot Framework Browser's]] browser bundle
-5. Execute the =robot= script with argument =tests=.
+5. Execute the =robot= script pointed at the =tests= directory.
 
 #+begin_src sh
 cd hcb-frontend
-python -m venv env
-./env/bin/pip install --upgrade pip
-./env/bin/pip install --requirement robot-requirements.txt
-./env/bin/rfbrowser init
-./env/bin/robot tests
+python -m venv test-env
+./test-env/bin/pip install --upgrade pip
+./test-env/bin/pip install --requirement robot-requirements.txt
+./test-env/bin/rfbrowser init
+./test-env/bin/robot tests
 #+end_src
+
+The tests shouldn't take too long to run.  Success/failure will be logged to stdout, and some reports will be generated in =PWD=.
 
 **** resource.robot
 
@@ -2743,16 +2790,40 @@ requests
 
 #+header: :tangle hcb-frontend/main.py
 #+begin_src python
-from flask import Flask, render_template, request, redirect, make_response, url_for
+from flask import Flask, render_template, request, redirect, make_response, url_for, Response
 from dataclasses import dataclass
 import requests
 import os
 import ast
+import functools
 app = Flask(__name__)
 
 backend_url = os.environ['HCBF_BACKEND_URL']
 set_http_cache_headers = ast.literal_eval(os.environ['HCBF_SET_HTTP_CACHE_HEADERS'])
 cache_max_age = int(os.environ['HCBF_CACHE_MAX_AGE'])
+
+def maybe_set_cache_headers(response_creator):
+    """Maybe add cache headers to a flask Response.
+
+    Whether the headers are set depends on the value of
+    set_http_cache_headers.
+
+    """
+    @functools.wraps(response_creator)
+    def wrapper(*args, **kwargs):
+        response = response_creator(*args, **kwargs)
+        if not isinstance(response, Response):
+            # wrap a template in a response object
+            response = make_response(response)
+
+        if set_http_cache_headers:
+            # deprecated, does app engine still use it?
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
+            # https://groups.google.com/g/google-appengine/c/6xAV2Q5x8AU/m/QI26C0ofvhwJ
+            response.headers['Pragma'] = 'Public'
+            response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
+        return response
+    return wrapper
 
 @dataclass
 class Journey:
@@ -2764,6 +2835,7 @@ class Journey:
     duration: int
 
 @app.route('/journeys')
+@maybe_set_cache_headers
 def journeys():
     page = int(request.args.get('page', '1'))
     search_term = request.args.get('search', '')
@@ -2803,6 +2875,7 @@ class Station:
     address: str
 
 @app.route('/stations')
+@maybe_set_cache_headers
 def stations():
     page = max(1, int(request.args.get('page', '1')))
     search_term = request.args.get('search', '')
@@ -2848,6 +2921,7 @@ class StationInfo:
 
 
 @app.route('/stations/<int:station_id>')
+@maybe_set_cache_headers
 def station(station_id):
     months = request.args.getlist('month')
     if months == []:
@@ -2884,12 +2958,6 @@ def station(station_id):
             months=months
     ))
 
-    if set_http_cache_headers:
-        # deprecated, does app engine still use it?
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Pragma
-        # https://groups.google.com/g/google-appengine/c/6xAV2Q5x8AU/m/QI26C0ofvhwJ
-        response.headers['Pragma'] = 'Public'
-        response.headers['Cache-Control'] = f'public, max-age={cache_max_age}'
     return response
 
 @app.route('/random-station')
@@ -2903,6 +2971,7 @@ def random_station():
     )
 
 @app.route('/')
+@maybe_set_cache_headers
 def home():
     return render_template('home.html.j2')
 
