@@ -1,9 +1,8 @@
 #+todo: TODO | DONE
 #+property: header-args :mkdirp yes
 
-
 * Table of contents                                                     :TOC:
-- [[#visiting-an-instance][Visiting an instance]]
+- [[#this-app][This app]]
 - [[#running-locally-with-docker][Running locally with Docker]]
   - [[#download-and-extract-the-source-tarballs][Download and extract the source tarballs]]
   - [[#define-a-docker-network][Define a Docker network]]
@@ -33,9 +32,10 @@
     - [[#project-contact][Project contact]]
     - [[#dataset-contacts][Dataset contacts]]
 - [[#minutes--journal][Minutes & Journal]]
+  - [[#write-tests-for-frontend][Write tests for frontend]]
   - [[#write-tests-for-backend][Write tests for backend]]
   - [[#speed-up-station-statistics-page-load][Speed up station statistics page load]]
-  - [[#rename-path-stationid-to-stationsid-in-frontend][Rename path =/station/<id>= to =/stations/<id>= in frontend.]]
+    - [[#improve-statistics-collection-queries][Improve statistics collection queries]]
   - [[#fix-the-latin-1-encoding-issue-in-data-import][Fix the Latin-1 encoding issue in data import.]]
   - [[#improve-documentation][Improve documentation]]
   - [[#get-acquainted-with-the-project-assignment][Get acquainted with the project assignment]]
@@ -78,7 +78,17 @@
     - [[#backend-configuration][Backend configuration]]
     - [[#database-export][Database export]]
 
-* Visiting an instance
+* This app
+
+HCB is a set of software for exploring data related to Helsinki city bikes.
+
+It started life as a Python program that interfaced with a SQLite3 database and rendered HTML for clients to consume.  Due to the project requirements, the app was separated in to three components: a PostgreSQL database, a "backend", and a "frontend" server.
+
+The backend is implemented in Python using Flask and flask_restful.  It consumes and produces HTTP messages.  The data source used is a PostgreSQL database.
+
+The frontend is implemented in Python using Flask.  It interfaces between a client and the backend.
+
+There are also two additional Python programs, one for initializing the database, and another for seeding the database with data provided in the assignment.
 
 An instance of the app is running at [[https://hcb.rkll.net]].
 
@@ -95,7 +105,7 @@ Note that I used [[https://podman.io][Podman]] instead of Docker as the containe
 
 ** Download and extract the source tarballs
 
-Source files are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar]].  Download and extract them, below is a an example command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+Source files required to deploy to a Docker host are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar]].  Download and extract them, below is a an example command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
 
 #+header: :results scalar
 #+begin_src sh
@@ -105,7 +115,7 @@ curl https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar \
 
 Alternatively, if you have Emacs installed on your machine, open this file in Emacs and run the command =M-x org-babel-tangle=.
 
-The extracted archive contains a =setup.sh= script that you may execute, or follow along with the instructions below.
+The extracted archive contains a =setup.sh= script that you may execute (=./setup.sh=), or follow along with the instructions below.
 
 ** Define a Docker network
 
@@ -120,7 +130,7 @@ docker network create hcb
 
 ** Run up a PostgreSQL database
 
-Here’s a Docker command to get the database running.  If you have not yet done so, first [[#define-a-docker-network][define a Docker network]].
+Here’s a Docker command to create an instance of PostgreSQL.  If you have not yet done so, first [[#define-a-docker-network][define a Docker network]].
 
 #+header: :tangle setup.sh
 #+header: :comments org
@@ -135,7 +145,7 @@ docker run --rm --detach \
 
 ** Declare the database
 
-A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =docker.env=, which can be tweaked in case you run into connection issues.
+A [[#the-database][Python script]] for this step is untarred to =hcb-setup-database= directory.  The directory contains a Dockerfile.  Build and run it.  There is a provided env file, =docker.env=, which may be tweaked to fit your environment.
 
 #+header: :tangle setup.sh
 #+header: :comments org
@@ -171,7 +181,7 @@ PSQL_PORT=5432
 
 ** Populate the database
 
-This is the [[#data-import][Data import]] job.  It is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get =Killed= while processing, increase Docker's allocated memory to 4096MB.
+The [[#data-import][data import]] job is untarred to =hcb-data-import= directory.  There is a Dockerfile that you can build and run.  This is a bit of a memory hog.  2GB of system memory doesn't seem to cut it.  If you get =Killed= while processing, increase Docker's allocated memory to 4096MB.
 
 #+header: :tangle setup.sh
 #+header: :comments org
@@ -228,7 +238,7 @@ docker run --rm --detach \
 popd
 #+end_src
 
-To verify the backend is able to connect to psql and serve requests, try performing a HTTP GET on one of the endpoints:
+To verify the backend is able to connect to PostgreSQL and serve requests, try performing a HTTP GET on one of the endpoints:
 + =/journeys=
 + =/stations=
 + =/random-station=
@@ -479,7 +489,11 @@ Implemented.
 
 **** Running backend in Cloud
 
+Both frontend and backend run in GCP.
+
 **** Implement E2E tests
+
+Some tests implemented using robot framework.
 
 **** Create UI for adding journeys or bicycle stations
 
@@ -540,7 +554,7 @@ CLOCK: [2023-04-15 Sat 17:00]--[2023-04-15 Sat 17:35] =>  0:35
 :header-args:sql: :engine postgres :dbhost localhost :dbuser postgres :dbpassword postgres :database hcb
 :END:
 :LOGBOOK:
-CLOCK: [2023-04-28 Fri 18:35]--[2023-04-28 Fri 19:22] =>  0:47
+CLOCK: [2023-04-28 Fri 15:35]--[2023-04-28 Fri 19:22] =>  3:47
 CLOCK: [2023-04-27 Thu 10:20]--[2023-04-27 Thu 15:37] =>  5:17
 CLOCK: [2023-04-25 Tue 11:04]--[2023-04-25 Tue 14:04] =>  3:00
 :END:
@@ -813,7 +827,7 @@ CREATE TABLE  station (
 
 *** Database prep script
 
-A python script provided below prepares the database for use.  Execution instructions are provided in section [[#declare-the-database][Declare the database]].
+A python script provided below prepares the database for use.  Execution instructions are provided in the section [[#declare-the-database][Declare the database]].
 
 **** requirements.txt
 
@@ -1700,9 +1714,9 @@ if __name__ == "__main__":
 
 ** The backend
 
-The backend is a facade for the database.  Initially the frontend made SQL calls directly, but one of the assignment requirements mandated a backend.  Of course PostgreSQL could be considered a backend, but maybe that is not what the assignment creators had in mind when they referred to a backend.
+The backend is a facade for the database.  Initially the frontend made SQL calls directly, but one of the assignment requirements mandated a backend.
 
-A client may interface with the backend via a REST interface.  REST requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the client that interfaced with the backend.
+A client may interface with the backend via a HTTP.  HTTP requests are translated into SQL queries and executed on a PostgreSQL database instance.  Query results are sent back to the client that interfaced with the backend.
 
 It is implemented in Python using [[https://flask.palletsprojects.com][flask]] and [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].
 
