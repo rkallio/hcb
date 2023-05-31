@@ -113,7 +113,7 @@ Note that I used [[https://podman.io][Podman]] instead of Docker as the containe
 If you run into issues with docker:
 
 + Install podman, which is available in your Linux distros package archive
-+ alias docker to podman in your shell (~alias docker='podman'~)
++ alias docker to podman in your shell (=alias docker=podman=)
 
 ** Download and extract the source tarballs
 
