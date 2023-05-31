@@ -3602,7 +3602,7 @@ It is implemented in [[https://www.python.org][Python]] using the [[https://flas
 
 *** Tests for frontend
 
-[[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running in a lcation that is accessible.
+[[https://robotframework-browser.org][Robot Framework Browser]] is used for testing the frontend.  For running the the tests, you must have a local install of [[https://www.python.org/downloads/][Python]], [[https://nodejs.org/en/download][NodeJS]] and npm.  You also need to have a working instance of the app running in a lcation that is accessible to your machine.  By default the location is set to [[https://hcb.rkll.net]].
 
 To run the tests:
 
@@ -3625,7 +3625,7 @@ The tests shouldn't take too long to run.  Success/failure will be logged to std
 
 **** resource.robot
 
-Here's a resource file for the tests.  If you have not set up the app on your local machine, you may want to point the =SERVER= variable someplace else, like to [[https://hcb.rkll.net]].
+Here's a resource file for the tests.  If you set up the app locally, you may want to update the =SERVER= variable to a local instance, which by default would be [[https://localhost:5434]].
 
 #+header: :tangle hcb-frontend/tests/resource.robot
 #+begin_src robot
@@ -3633,7 +3633,7 @@ Here's a resource file for the tests.  If you have not set up the app on your lo
 Library   Browser
 
 ,*** Variables ***
-${SERVER}        http://localhost:5434
+${SERVER}        https://hcb.rkll.net
 
 ,*** Keywords ***
 Title contains Helsinki city bikes
