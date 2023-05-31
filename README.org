@@ -2963,7 +2963,7 @@ The frontend offers the following views:
 + A station list
 + A more specific listing of a station.
 
-It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].
+It is implemented in [[https://www.python.org][Python]] using the [[https://flask.palletsprojects.com][Flask web framework]].  The code is a mess because I didn't have the time to focus on this part of the assignment.
 
 *** Tests for frontend
 
@@ -3921,7 +3921,7 @@ Custom css, which there obviously is not a lot of.
 
 * Google Cloud
 
-Following configuration sets up the frontend and backend as services in [[https://cloud.google.com/appengine][App Engine]], and also creates a =default= service.  Incoming traffic is routed to =hcb-frontend= instead of the =default= service, though.
+The following configuration sets up the frontend and backend as services in [[https://cloud.google.com/appengine][App Engine]], and also creates a =default= service.
 
 The app is accessible at [[https://helsinki-city-bikes-383419.lm.r.appspot.com]] and at [[https://hcb.rkll.net]].
 
