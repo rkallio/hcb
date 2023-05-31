@@ -230,7 +230,7 @@ WORKDIR /app
 ADD requirements.txt .
 RUN pip install -r requirements.txt
 ADD main.py .
-ADD db.py .
+ADD hcb hcb
 CMD python main.py
 #+end_src
 
@@ -2926,15 +2926,10 @@ class TestPSQLStoreStationInfo(TestPSQLStore):
 
 #+header: :tangle hcb-backend/main.py
 #+begin_src python
-from flask import Flask, request
-from flask_restful import Api, Resource, fields, marshal_with
-from db import DB, GetJourneysParams, GetStationsParams, GetStationInfoParams
 from hcb.presentation import http
 from hcb.logic.objects import HCB
 from hcb.datastore.sql import PSQLStore
 import os
-import ast
-import functools
 
 db_name = os.environ['PSQL_DB']
 db_user = os.environ['PSQL_USER']
