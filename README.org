@@ -1447,27 +1447,6 @@ class JourneysParams(InputObject):
         self.order_by = order_by
         self.direction = direction
 
-    def __eq__(self, o):
-       if not isinstance(o, JourneysParams):
-           return False
-
-       if self.page != o.page:
-           return False
-
-       if self.page_size != o.page:
-           return False
-
-       if self.search_term != o.search_term:
-           return False
-
-       if self.order_by != o.order_by:
-           return False
-
-       if self.direction != o.direction:
-           return False
-
-       return True
-
     def validate(self):
         errors = []
         if not isinstance(self.page, int):
