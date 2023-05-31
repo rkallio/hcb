@@ -90,7 +90,7 @@ In the beginning it was a Python program that queried an SQLite3 database and re
 
 The backend is implemented in Python using [[https://flask-restful.readthedocs.io/en/latest/index.html][flask_restful]].  It consumes and produces HTTP messages.  The data source used is a PostgreSQL database.
 
-The frontend is implemented in Python using [[https://flask.palletsprojects.com][Flask]].  It interfaces between a client and the backend over HTTP.
+The frontend is implemented in Python using [[https://flask.palletsprojects.com][Flask]].  It interfaces between a client (web browser) and the backend over HTTP.
 
 There are also two additional Python programs, one for initializing the database, and another for seeding the database with data provided in the assignment.
 
@@ -108,13 +108,17 @@ Prerequisites:
 + A browser and an archive extractor, or =curl= and =tar=
 + A container engine like [[https://www.docker.com][Docker]].  The engine's VM should have access to at least 4GB because the data import operation is a memory hog.
 
-Note that I used [[https://podman.io][Podman]] instead of Docker as the container engine.  I know from experience that they don't quite share the same feature set.  If you run into issues, try running the commands with podman, which is very easy to install on a Linux host.
+Note that I used [[https://podman.io][Podman]] instead of Docker as the container engine.  Podman should share the same API as Docker, but I know from experience that this is not always true.
+
+If you run into issues with docker:
+
++ Install podman, which is available in your Linux distros package archive
++ alias docker to podman in your shell (~alias docker='podman'~)
 
 ** Download and extract the source tarballs
 
-Source files required to deploy to a Docker host are tangled from this readme file into a tarball located at [[https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar]].  Download and extract them, below is a an example command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
+Latest sources are available here: [[https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar]].  Download and extract them, below is a an example command.  Make a note of the extracted directories, they will be referenced later in the [[#running-locally-with-docker][Running locally with Docker]] section.
 
-#+header: :results scalar
 #+begin_src sh
 curl https://storage.googleapis.com/hcb-helsinki-city-bikes/main/sources.tar \
     | tar xv
