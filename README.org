@@ -35,7 +35,7 @@
     - [[#html-templates][HTML templates]]
     - [[#osmjs][osm.js]]
     - [[#stylecss][style.css]]
-- [[#google-cloud][Google Cloud]]
+- [[#cloud-stuff][Cloud stuff]]
   - [[#dispatchyaml][dispatch.yaml]]
   - [[#services][Services]]
     - [[#default][default]]
@@ -3914,7 +3914,7 @@ Custom css, which there obviously is not a lot of.
 
 #+end_src
 
-* Google Cloud
+* Cloud stuff
 
 The following configuration sets up the frontend and backend as services in [[https://cloud.google.com/appengine][App Engine]], and also creates a =default= service.
 
